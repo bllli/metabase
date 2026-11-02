@@ -87,6 +87,21 @@
     (or (when-not (str/blank? env-val) env-val)
         (k app-defaults))))
 
+(defn base-path
+  "Return the configured HTTP mount path without a trailing slash; reject ambiguous path segments."
+  []
+  (let [path (or (config-str :mb-base-path) "")
+        path (if (= path "/") "" path)]
+    (when-not (or (empty? path) (re-matches #"(?:/[A-Za-z0-9_-]+)+" path))
+      (throw (ex-info "MB_BASE_PATH must be empty, /, or slash-separated letters, digits, underscores and hyphens"
+                      {:base-path path})))
+    path))
+
+(defn base-path-cookie-path
+  "Return the cookie path for this HTTP mount."
+  []
+  (str (base-path) "/"))
+
 ;; These are convenience functions for accessing config values that ensures a specific return type
 ;;
 ;; TODO - These names are bad. They should be something like `int`, `boolean`, and `keyword`, respectively. See

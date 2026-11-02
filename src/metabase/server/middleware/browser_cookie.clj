@@ -6,6 +6,7 @@
   (:require
    [java-time.api :as t]
    [metabase.api.macros :as api.macros]
+   [metabase.config.core :as config]
    [metabase.request.core :as request]
    [metabase.request.schema :as request.schema]
    [metabase.util :as u]
@@ -25,7 +26,7 @@
 (defn- cookie-options
   [request]
   (merge {:http-only true
-          :path      "/"
+          :path      (config/base-path-cookie-path)
           ;; Set the cookie to expire 20 years from now. That should be sufficient
           :expires   (t/format :rfc-1123-date-time (t/plus (t/zoned-date-time) (t/years 20)))}
          ;; `:unknown` counts as HTTPS here: this only decides whether to add `Secure`

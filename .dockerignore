@@ -23,3 +23,7 @@ node_modules
 
 Dockerfile
 .dockerignore
+
+# Local build tooling is platform-specific and is not part of the application.
+bin/bb
+Dockerfile.tokenplus

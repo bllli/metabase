@@ -7,6 +7,7 @@
    [metabase.embedding.sdk-react-18 :as embedding.sdk-react-18]
    [metabase.metabot.agent-api.usage :as agent-api.usage]
    [metabase.server.middleware.auth :as mw.auth]
+   [metabase.server.middleware.base-path :as mw.base-path]
    [metabase.server.middleware.body-limit :as mw.body-limit]
    [metabase.server.middleware.browser-cookie :as mw.browser-cookie]
    [metabase.server.middleware.data-app-scope :as mw.data-app-scope]
@@ -184,6 +185,7 @@
   Pass `options` as a var to have the dev handler rebuild when it is redefined."
   [server-routes :- ::api.macros/handler
    options       :- OptionsOrVar]
-  (if config/is-dev?
-    (dev-handler server-routes options)
-    (apply-middleware server-routes (current-options options))))
+  (mw.base-path/wrap-base-path
+   (if config/is-dev?
+     (dev-handler server-routes options)
+     (apply-middleware server-routes (current-options options)))))

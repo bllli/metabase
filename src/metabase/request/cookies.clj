@@ -32,7 +32,7 @@
   "x-metabase-anti-csrf-token")
 
 (defn- clear-cookie [response cookie-name]
-  (response/set-cookie response cookie-name nil {:expires "Thu, 1 Jan 1970 00:00:00 GMT", :path "/"}))
+  (response/set-cookie response cookie-name nil {:expires "Thu, 1 Jan 1970 00:00:00 GMT", :path (config/base-path-cookie-path)}))
 
 (defn- wrap-body-if-needed
   "You can't add a cookie (by setting the `:cookies` key of a response) if the response is an unwrapped JSON response;
@@ -63,9 +63,7 @@
   [_ request]
   (merge
    {:same-site (request.settings/session-cookie-samesite)
-    ;; TODO - we should set `site-path` as well. Don't want to enable this yet so we don't end
-    ;; up breaking things issue: https://github.com/metabase/metabase/issues/39346
-    :path      "/" #_(site-path)}
+    :path      (config/base-path-cookie-path)}
    ;; If the authentication request was made over HTTPS (hopefully always except for local dev instances) add the
    ;; `Secure` attribute so the cookie is only sent over HTTPS. `:unknown` counts: adding `Secure` to a cookie that
    ;; turns out to be travelling in the clear costs nothing, while omitting it on a TLS request that we could not
@@ -76,7 +74,7 @@
 (defmethod default-session-cookie-attributes :full-app-embed
   [_ request]
   (merge
-   {:path "/"}
+   {:path (config/base-path-cookie-path)}
    (when (#{:https :unknown} (request.util/https-state request))
      ;; SameSite=None is required for cross-domain full-app embedding. This is safe because
      ;; security is provided via anti-CSRF token. Note that most browsers will only accept

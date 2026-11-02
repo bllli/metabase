@@ -150,3 +150,5 @@ bun run type-check-pure
 浏览器验收后，用户授权提交代码并构建 `linux/amd64` 镜像，指定标签为 `r.inner.silinex.work/silinex/oss/metabase:20261102-amd64`。沿用 `Dockerfile.tokenplus` 的 OSS 构建流程，并从提交后的 Git 快照生成构建上下文。`.dockerignore` 同时排除 `local/`，防止后续直接构建时夹带测试数据库、凭据和日志。
 
 提交前运行模块配置生成器，移除未被其他模块使用的模型导出声明。REST 模块按仓库要求注册为 `asset-transfer.rest` 子模块，使用 `asset-transfer-rest` namespace，命名空间前缀预算相应增加一项。迁移 v1 协议仍明确采用 legacy MBQL，生产代码保留一处转换例外并为该符号增加一项 lint 配额；测试中不需要的忽略声明已删除。
+
+镜像构建保留 Maven/Git 依赖缓存，并为 Bun、uv 和 Alpine 包增加 BuildKit 持久缓存；Bun/uv 按构建架构、Alpine 按目标架构隔离。源码变化导致安装层重跑时仍可复用已下载的依赖，缓存挂载不会进入最终镜像。首次构建或清理 builder 缓存后仍需下载；后续使用同一个 builder 才能复用本地缓存，包索引检查及新版本依赖仍可能联网。

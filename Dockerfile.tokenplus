@@ -13,9 +13,11 @@ WORKDIR /home/node
 
 FROM build-tools AS builder
 ARG VERSION=v0.0.0-tokenplus-9fe55abf5c
+ARG BUILDARCH
 ENV CYPRESS_INSTALL_BINARY=0
 COPY . .
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,id=tokenplus-metabase-bun-${BUILDARCH},target=/root/.bun/install/cache,sharing=locked \
+    bun install --frozen-lockfile
 # Let the build JVM exit before bundling JavaScript to reduce peak memory.
 RUN --mount=type=cache,id=tokenplus-metabase-m2,target=/root/.m2 \
     --mount=type=cache,id=tokenplus-metabase-gitlibs,target=/root/.gitlibs \
@@ -27,9 +29,11 @@ RUN CI=true MB_EDITION=oss bun run build-release:js
 RUN CI=true MB_EDITION=oss bun run build-release:static-viz
 RUN --mount=type=cache,id=tokenplus-metabase-m2,target=/root/.m2 \
     --mount=type=cache,id=tokenplus-metabase-gitlibs,target=/root/.gitlibs \
+    --mount=type=cache,id=tokenplus-metabase-uv-${BUILDARCH},target=/root/.cache/uv,sharing=locked \
     INTERACTIVE=false CI=true MB_EDITION=oss bin/build.sh :version ${VERSION} :steps '[:licenses :python :uberjar]'
 
 FROM eclipse-temurin:25-jre-alpine AS runner
+ARG TARGETARCH
 
 ENV FC_LANG=en-US LC_CTYPE=en_US.UTF-8
 
@@ -37,9 +41,9 @@ ENV FC_LANG=en-US LC_CTYPE=en_US.UTF-8
 COPY bin/docker/DigiCertGlobalRootG2.crt.pem /app/certs/DigiCertGlobalRootG2.crt.pem
 
 # dependencies
-RUN apk add -U bash fontconfig curl font-noto font-noto-arabic font-noto-hebrew font-noto-cjk java-cacerts && \
+RUN --mount=type=cache,id=tokenplus-metabase-apk-${TARGETARCH},target=/var/cache/apk,sharing=locked \
+    apk --cache-dir /var/cache/apk add -U bash fontconfig curl font-noto font-noto-arabic font-noto-hebrew font-noto-cjk java-cacerts && \
     apk upgrade && \
-    rm -rf /var/cache/apk/* && \
     sed -i 's|^mozilla/emSign_ECC_Root_CA_-_G3.crt|!&|' /etc/ca-certificates.conf && \
     update-ca-certificates && \
     /opt/java/openjdk/bin/keytool -list -v -cacerts -storepass changeit | awk '/^Alias name:/{a=substr($0,13)} /^Owner: CN=emSign ECC Root CA - G3,/{print a}' | while read -r a; do /opt/java/openjdk/bin/keytool -delete -cacerts -storepass changeit -alias "$a"; done && \

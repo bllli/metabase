@@ -46,6 +46,7 @@
 (def ^:private Card
   [:map {:closed true}
    [:entity_id [:re #"[A-Za-z0-9_-]{21}"]]
+   [:dashboard_entity_id {:optional true} [:re #"[A-Za-z0-9_-]{21}"]]
    [:name [:string {:min 1 :max 254}]]
    [:description {:optional true} [:maybe :string]]
    [:display [:enum "table" "scalar" "line" "bar"]]
@@ -60,11 +61,45 @@
                   [:target Clause]
                   [:default {:optional true} Scalar]]]]])
 
+(def ^:private Dashboard
+  [:map {:closed true}
+   [:entity_id [:re #"[A-Za-z0-9_-]{21}"]]
+   [:name [:string {:min 1 :max 254}]]
+   [:description [:maybe :string]]
+   [:width [:enum "fixed" "full"]]
+   [:auto_apply_filters :boolean]
+   [:parameters [:vector {:max 100}
+                 [:map {:closed true}
+                  [:id :string] [:name :string] [:slug :string] [:type :string]
+                  [:default {:optional true} [:or Scalar [:vector Scalar]]]
+                  [:required {:optional true} [:maybe :boolean]]
+                  [:isMultiSelect {:optional true} [:maybe :boolean]]
+                  [:sectionId {:optional true} [:maybe :string]]
+                  [:values_query_type {:optional true} [:maybe :string]]
+                  [:filteringParameters {:optional true} [:maybe [:vector :string]]]]]]
+   [:tabs [:vector {:max 100} [:map {:closed true}
+                               [:id ms/PositiveInt] [:name ms/NonBlankString]
+                               [:position ms/IntGreaterThanOrEqualToZero]]]]
+   [:dashcards [:vector {:max 200}
+                [:map {:closed true}
+                 [:card_id [:maybe [:re #"[A-Za-z0-9_-]{21}"]]]
+                 [:dashboard_tab_id [:maybe ms/PositiveInt]]
+                 [:action_id :nil]
+                 [:row ms/IntGreaterThanOrEqualToZero] [:col ms/IntGreaterThanOrEqualToZero]
+                 [:size_x ms/PositiveInt] [:size_y ms/PositiveInt]
+                 [:series [:vector [:re #"[A-Za-z0-9_-]{21}"]]]
+                 [:visualization_settings ms/VisualizationSettings]
+                 [:inline_parameters [:vector :string]]
+                 [:parameter_mappings [:vector [:map {:closed true}
+                                                [:parameter_id :string]
+                                                [:card_id [:re #"[A-Za-z0-9_-]{21}"]]
+                                                [:target Clause]]]]]]]])
+
 (def ^:private Bundle
   [:map {:closed true}
    [:format [:= "metabase-asset-transfer"]]
-   [:format_version [:= 1]]
-   [:producer [:map {:closed true} [:metabase_version :string] [:transfer_version [:= 1]]]]
+   [:format_version [:enum 1 2]]
+   [:producer [:map {:closed true} [:metabase_version :string] [:transfer_version [:enum 1 2]]]]
    [:databases [:vector {:max 100}
                 [:map {:closed true}
                  [:id ms/PositiveInt] [:name :string] [:engine [:enum "postgres" "mysql" "clickhouse"]]
@@ -82,7 +117,8 @@
    [:fields [:vector [:map {:closed true}
                       [:id ms/PositiveInt] [:table_id ms/PositiveInt]
                       [:name :string] [:base_type :string] [:effective_type {:optional true} [:maybe :string]]]]]
-   [:cards [:vector {:max 100} Card]]])
+   [:cards [:vector {:max 100} Card]]
+   [:dashboards {:optional true} [:vector {:max 20} Dashboard]]])
 
 (def ^:private ImportRequest
   [:map {:closed true}
@@ -94,6 +130,7 @@
   "Export question definitions and non-sensitive connection templates."
   [_route-params _query-params
    body :- [:map {:closed true}
+            [:dashboard_ids {:default []} [:vector {:max 20} ms/PositiveInt]]
             [:card_ids {:default []} [:vector {:max 100} ms/PositiveInt]]
             [:database_ids {:default []} [:vector {:max 100} ms/PositiveInt]]]]
   (api/check-superuser)

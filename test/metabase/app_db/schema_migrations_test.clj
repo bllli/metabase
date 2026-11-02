@@ -4225,3 +4225,19 @@
         (migrate!)
         (is (zero? (t2/count :asset_transfer_import)))
         (is (zero? (t2/count :asset_transfer_binding)))))))
+
+(deftest asset-transfer-dashboard-binding-test
+  (impl/test-migrations ["atdash26a" "atdashu26"] [migrate!]
+    (migrate!)
+    (let [binding {:source_entity_id "SourceDashboard000001" :collection_id 1 :dashboard_id 1
+                   :source_hash (apply str (repeat 64 "a")) :target_hash (apply str (repeat 64 "b"))}]
+      (t2/insert! :asset_transfer_dashboard_binding binding)
+      (is (thrown? Exception (t2/insert! :asset_transfer_dashboard_binding binding)))
+      (t2/insert! :asset_transfer_dashboard_binding (assoc binding :source_entity_id "sourceDashboard000001"))
+      (is (= 2 (t2/count :asset_transfer_dashboard_binding)))
+      (t2/with-connection [conn]
+        (liquibase/with-liquibase [liquibase conn]
+          (.rollback liquibase (int 2) "")))
+      (is (thrown? Exception (t2/count :asset_transfer_dashboard_binding)))
+      (migrate!)
+      (is (zero? (t2/count :asset_transfer_dashboard_binding))))))

@@ -13,7 +13,7 @@ export const assetTransferApi = Api.injectEndpoints({
   endpoints: (builder) => ({
     exportAssets: builder.mutation<
       AssetTransferBundle,
-      { card_ids: number[]; database_ids: number[] }
+      { card_ids: number[]; database_ids: number[]; dashboard_ids?: number[] }
     >({
       query: (body) => ({
         method: "POST",
@@ -42,6 +42,7 @@ export const assetTransferApi = Api.injectEndpoints({
       }),
       invalidatesTags: () => [
         listTag("card"),
+        listTag("dashboard"),
         listTag("collection"),
         "collection-tree",
       ],

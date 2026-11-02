@@ -81,6 +81,7 @@
    "ApiKeyUsageLog"
    "ApplicationPermissionsRevision"
    "AssetTransferBinding"
+   "AssetTransferDashboardBinding"
    "AssetTransferImport"
    "AuditLog"
    "AuthIdentity"

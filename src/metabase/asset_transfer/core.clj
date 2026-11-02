@@ -2,6 +2,7 @@
   "Independent OSS transfer of a bounded set of question definitions."
   (:require
    [metabase.api.common :as api]
+   [metabase.asset-transfer.dashboard :as dashboard]
    [metabase.asset-transfer.db :as db]
    [metabase.asset-transfer.schema :as s]
    [metabase.config.core :as config]
@@ -29,12 +30,13 @@
       s/wire))
 
 (defn- exportable-card!
-  [card]
+  [card dashboard-ids]
   (s/check! (and (= :question (:type card)) (not (:archived card))
-                 (nil? (:dashboard_id card)) (nil? (:document_id card))
+                 (or (nil? (:dashboard_id card)) (contains? dashboard-ids (:dashboard_id card))) (nil? (:document_id card))
                  (empty? (:parameter_mappings card)))
-            "UNSUPPORTED_CARD" [:card] "Only unarchived standalone questions without parameter mappings can be exported.")
-  (assoc (card-definition card) :entity_id (:entity_id card)))
+            "UNSUPPORTED_CARD" [:card] "Select the owning dashboard for dashboard questions. Only unarchived questions without parameter mappings can be exported.")
+  (cond-> (assoc (card-definition card) :entity_id (:entity_id card))
+    (:dashboard_id card) (assoc :dashboard_entity_id (get dashboard-ids (:dashboard_id card)))))
 
 (defn- table-descriptor [table]
   {:id (:id table) :database_id (:db_id table) :schema (:schema table) :name (:name table)})
@@ -64,23 +66,43 @@
 
 (defn export-bundle
   "Export selected questions and optional connection templates. Never exports warehouse rows."
-  [{:keys [card_ids database_ids]}]
+  [{:keys [card_ids database_ids dashboard_ids] :or {dashboard_ids []}}]
   (api/check-superuser)
   (s/check! (and (vector? card_ids) (<= (count card_ids) s/max-cards) (every? pos-int? card_ids)
                  (vector? database_ids) (<= (count database_ids) 100) (every? pos-int? database_ids)
-                 (or (seq card_ids) (seq database_ids)))
-            "INVALID_SELECTION" [] "Select up to 100 questions or databases.")
-  (let [references (atom {:databases (set database_ids) :tables #{} :fields #{}})
+                 (vector? dashboard_ids) (<= (count dashboard_ids) 20) (every? pos-int? dashboard_ids)
+                 (or (seq card_ids) (seq database_ids) (seq dashboard_ids)))
+            "INVALID_SELECTION" [] "Select up to 20 dashboards and 100 questions or databases.")
+  (let [dashboards (mapv dashboard/export-definition (distinct dashboard_ids))
+        dashboard-identities (zipmap (distinct dashboard_ids) (map :entity_id dashboards))
+        card-ids (vec (distinct (concat card_ids (mapcat dashboard/referenced-cards dashboards))))
+        _ (s/check! (<= (count card-ids) s/max-cards) "TOO_MANY_CARDS" [:cards] "Dashboards reference more than 100 questions.")
+        references (atom {:databases (set database_ids) :tables #{} :fields #{}})
         collect (fn [kind id] (swap! references update kind conj id) id)
         cards (mapv (fn [id]
                       (api/read-check :model/Card id)
-                      (let [card (exportable-card! (present! (db/card id) [:cards id]))]
+                      (let [card (exportable-card! (present! (db/card id) [:cards id]) dashboard-identities)]
                         (try
                           (s/card card #(collect :databases %) #(collect :tables %)
                                   (fn [field-id _] (collect :fields field-id)))
                           (catch clojure.lang.ExceptionInfo e
                             (throw (ex-info (ex-message e) (assoc (ex-data e) :object_ref (:entity_id card))))))))
-                    (distinct card_ids))
+                    card-ids)
+        card-identities (zipmap card-ids (map :entity_id cards))
+        card-definitions (into {} (map (juxt :entity_id identity) cards))
+        dashboards (mapv (fn [dash]
+                           (let [portable (update dash :dashcards
+                                                  (fn [dashcards]
+                                                    (mapv (fn [dc]
+                                                            (-> dc
+                                                                (update :card_id card-identities)
+                                                                (update :series (partial mapv card-identities))
+                                                                (update :parameter_mappings
+                                                                        (fn [mappings]
+                                                                          (mapv #(update % :card_id card-identities) mappings)))))
+                                                          dashcards)))]
+                             (dashboard/rewrite portable card-definitions identity identity
+                                                (fn [id _] (collect :fields id)) db/field))) dashboards)
         fields (mapv #(field-descriptor (present! (db/field %) [:fields %])) (sort (:fields @references)))
         table-ids (into (:tables @references) (map :table_id fields))
         tables (mapv #(table-descriptor (present! (db/table %) [:tables %])) (sort table-ids))
@@ -90,9 +112,11 @@
                             {:id id :name (:name database) :engine (name (:engine database))
                              :details (s/connection-template (:details database))}))
                         (sort (:databases @references)))
-        bundle {:format "metabase-asset-transfer" :format_version 1
-                :producer {:metabase_version (version) :transfer_version 1}
-                :databases databases :tables tables :fields fields :cards cards}]
+        format-version (if (seq dashboards) 2 1)
+        bundle (cond-> {:format "metabase-asset-transfer" :format_version format-version
+                        :producer {:metabase_version (version) :transfer_version format-version}
+                        :databases databases :tables tables :fields fields :cards cards}
+                 (seq dashboards) (assoc :dashboards dashboards))]
     (s/bundle! bundle (version))
     (doseq [card cards]
       (checked-card card (into {} (map (juxt :id :id) databases))
@@ -145,9 +169,10 @@
     {:databases databases :database_revisions database-revisions :tables tables :fields fields}))
 
 (defn- plan-card
-  [source collection-id {:keys [databases tables fields]}]
+  [source collection-id {:keys [databases tables fields]} dashboard-plans]
   (let [rewritten (checked-card source databases tables fields)
-        target (-> rewritten (dissoc :entity_id) (assoc :collection_id collection-id :type :question))
+        owner (when-let [entity (:dashboard_entity_id source)] (get dashboard-plans entity))
+        target (-> rewritten (dissoc :entity_id :dashboard_entity_id) (assoc :collection_id collection-id :type :question))
         _ (queries/check-allowed-to-create-card!
            (update target :dataset_query #(lib-be/normalize-query nil % {:strict? true})) :question)
         database-id (get-in target [:dataset_query :database])
@@ -158,12 +183,16 @@
         unchanged? (and binding existing (= source-hash (:source_hash binding))
                         (= target-hash (:target_hash binding))
                         (= collection-id (:collection_id existing)) (not (:archived existing))
-                        (= :question (:type existing)) (nil? (:dashboard_id existing)) (nil? (:document_id existing)))]
-    {:source_entity_id (:entity_id source) :name (:name source)
+                        (= :question (:type existing)) (nil? (:document_id existing))
+                        (if (:dashboard_entity_id source)
+                          (and (= "skip" (:action owner)) (= (:dashboard_id owner) (:dashboard_id existing)))
+                          (nil? (:dashboard_id existing))))]
+    {:model "card" :dashboard_entity_id (:dashboard_entity_id source)
+     :source_entity_id (:entity_id source) :name (:name source)
      :action (cond (nil? binding) "create" unchanged? "skip" :else "conflict")
      :card_id (:card_id binding) :source_hash source-hash :target_hash target-hash :definition target
      :error (when (and binding (not unchanged?))
-              {:code "ASSET_CHANGED" :message "The source or previously imported target changed. V1 never overwrites."})}))
+              {:code "ASSET_CHANGED" :message "The source or previously imported target changed. Imports never overwrite."})}))
 
 (defn- build-plan
   [request]
@@ -171,15 +200,33 @@
         _ (s/bundle! bundle (version))
         collection (target-collection! target_collection_id)
         references (target-references bundle database_bindings)
-        items (mapv #(plan-card % target_collection_id references) (:cards bundle))]
-    {:plan_hash (s/digest {:bundle bundle :references references
+        cards (into {} (map (juxt :entity_id identity) (:cards bundle)))
+        dashboards (into {} (map (juxt :entity_id identity) (:dashboards bundle)))
+        _ (doseq [card (:cards bundle) :when (:dashboard_entity_id card)]
+            (s/check! (and (contains? dashboards (:dashboard_entity_id card))
+                           (some #{(:entity_id card)} (dashboard/referenced-cards (get dashboards (:dashboard_entity_id card)))))
+                      "INVALID_REFERENCE" [:cards :dashboard_entity_id] "An owned question must appear in its dashboard."))
+        _ (doseq [dash (:dashboards bundle)]
+            (dashboard/rewrite dash cards identity identity
+                               (fn [id path] (:target_id (present! (get (:fields references) id) path))) (:fields references)))
+        dashboard-items (mapv (fn [dash]
+                                (dashboard/plan dash target_collection_id
+                                                (select-keys (:databases references)
+                                                             (map #(get-in cards [% :dataset_query :database])
+                                                                  (dashboard/referenced-cards dash)))))
+                              (:dashboards bundle))
+        dashboard-plans (into {} (map (juxt :source_entity_id identity) dashboard-items))
+        items (into (mapv #(plan-card % target_collection_id references dashboard-plans) (:cards bundle)) dashboard-items)]
+    {:references references :cards cards
+     :plan_hash (s/digest {:bundle bundle :references references
                            :collection (select-keys collection [:id :archived :personal_owner_id :type :namespace :is_remote_synced])
                            :items items})
      :can_import (not-any? #(= "conflict" (:action %)) items)
      :items items}))
 
 (defn- public-plan [plan]
-  (update plan :items #(mapv (fn [item] (dissoc item :definition :source_hash :target_hash)) %)))
+  (-> plan (dissoc :references :cards)
+      (update :items #(mapv (fn [item] (dissoc item :definition :source_hash :target_hash :dashboard_entity_id)) %))))
 
 (defn preview
   "Pure preflight with respect to persisted application state and source warehouses."
@@ -210,8 +257,11 @@
         (let [items (mapv (fn [item]
                             (if (and (= "created" (:action item)) (not (:event_delivered item)))
                               (try
-                                (when-let [card (db/card (:card_id item))]
-                                  (events/publish-event! :event/card-create {:object card :user-id (:user_id record)}))
+                                (let [dashboard? (= "dashboard" (:model item))
+                                      object (if dashboard? (db/dashboard (:dashboard_id item)) (db/card (:card_id item)))]
+                                  (when object
+                                    (events/publish-event! (if dashboard? :event/dashboard-create :event/card-create)
+                                                           {:object object :user-id (:user_id record)})))
                                 (assoc item :event_delivered true)
                                 (catch Exception _ item))
                               item)) (:items result))
@@ -238,18 +288,37 @@
             (let [plan (build-plan request)]
               (api/check (= plan_hash (:plan_hash plan)) [409 "The import plan changed. Run preflight again."])
               (api/check (:can_import plan) [409 "Resolve import conflicts before continuing."])
-              (let [items (mapv (fn [{:keys [action definition source_entity_id source_hash card_id name]}]
+              (let [dashboard-items (filterv #(= "dashboard" (:model %)) (:items plan))
+                    dashboard-ids (into {} (map (fn [item]
+                                                  [(:source_entity_id item)
+                                                   (if (= "skip" (:action item)) (:dashboard_id item)
+                                                       (:id (dashboard/create-shell! (:definition item) target_collection_id)))])
+                                                dashboard-items))
+                    card-items (mapv
+                                (fn [{:keys [action definition source_entity_id source_hash card_id name dashboard_entity_id]}]
                                   (if (= "skip" action)
-                                    {:source_entity_id source_entity_id :name name :action "skipped" :card_id card_id}
-                                    (let [card (queries/create-card! definition @api/*current-user* true false
+                                    {:model "card" :source_entity_id source_entity_id :name name :action "skipped" :card_id card_id}
+                                    (let [definition (cond-> definition dashboard_entity_id
+                                                             (assoc :dashboard_id (get dashboard-ids dashboard_entity_id)))
+                                          card (queries/create-card! definition @api/*current-user* true false
                                                                      {:skip-query-metadata? true})]
                                       (db/insert-binding!
                                        {:source_entity_id source_entity_id :collection_id target_collection_id
                                         :database_id (get-in definition [:dataset_query :database])
                                         :card_id (:id card) :source_hash source_hash
                                         :target_hash (s/digest (card-definition card))})
-                                      {:source_entity_id source_entity_id :name name :action "created"
-                                       :card_id (:id card) :event_delivered false}))) (:items plan))
+                                      {:model "card" :source_entity_id source_entity_id :name name :action "created"
+                                       :card_id (:id card) :event_delivered false})))
+                                (filterv #(= "card" (:model %)) (:items plan)))
+                    card-ids (into {} (map (juxt :source_entity_id :card_id) card-items))
+                    items (into card-items
+                                (mapv (fn [item]
+                                        (let [id (get dashboard-ids (:source_entity_id item))]
+                                          (when (= "create" (:action item))
+                                            (dashboard/finish! item id target_collection_id (:cards plan) card-ids (:references plan)))
+                                          (cond-> {:model "dashboard" :source_entity_id (:source_entity_id item) :name (:name item)
+                                                   :action (if (= "skip" (:action item)) "skipped" "created") :dashboard_id id}
+                                            (= "create" (:action item)) (assoc :event_delivered false)))) dashboard-items))
                     result {:request_id request_id :status "events_pending" :items items}]
                 (db/insert-import! {:request_id request_id :request_hash request-hash :user_id api/*current-user-id*
                                     :status "events_pending" :result result})

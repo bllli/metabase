@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - changeSet:
+      id: atdash26a
+      author: codex
+      comment: Track source dashboard mappings without changing Dashboard entity identities
+      changes:
+        - createTable:
+            tableName: asset_transfer_dashboard_binding
+            remarks: Source identities scoped to a target collection; retained on target deletion for conflict detection
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                    primaryKeyName: pk_asset_transfer_dashboard_binding
+              - column:
+                  name: source_entity_id
+                  type: ${entity_id.type}
+                  remarks: Source dashboard entity ID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: collection_id
+                  type: int
+                  remarks: Target collection ID; no cascading deletion
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dashboard_id
+                  type: int
+                  remarks: Imported dashboard ID; retained to detect deletion
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_hash
+                  type: varchar(64)
+                  remarks: SHA256 of the portable source definition
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_hash
+                  type: varchar(64)
+                  remarks: SHA256 of the managed target definition immediately after creation
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: asset_transfer_dashboard_binding
+
+  - changeSet:
+      id: atdashu26
+      author: codex
+      comment: Prevent duplicate asset_transfer_dashboard_binding records
+      changes:
+        - addUniqueConstraint:
+            tableName: asset_transfer_dashboard_binding
+            columnNames: source_entity_id, collection_id
+            constraintName: uq_asset_transfer_dashboard_binding
+      rollback:
+        - dropUniqueConstraint:
+            tableName: asset_transfer_dashboard_binding
+            constraintName: uq_asset_transfer_dashboard_binding

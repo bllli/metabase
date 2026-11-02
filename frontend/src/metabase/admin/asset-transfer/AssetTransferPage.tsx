@@ -1,7 +1,11 @@
 import { useRef, useState } from "react";
 import { t } from "ttag";
 
-import { useListCardsQuery, useListDatabasesQuery } from "metabase/api";
+import {
+  useListCardsQuery,
+  useListDashboardsQuery,
+  useListDatabasesQuery,
+} from "metabase/api";
 import {
   useExportAssetsMutation,
   useImportAssetsMutation,
@@ -55,11 +59,17 @@ function ItemList({ items }: { items: AssetTransferItem[] }) {
   return (
     <Stack gap="xs">
       {items.map((item) => (
-        <Box key={item.source_entity_id}>
+        <Box key={`${item.model ?? "card"}:${item.source_entity_id}`}>
           <Text>
             {item.name}: {labels[item.action]}
           </Text>
           {item.error && <Alert color="error">{item.error.message}</Alert>}
+          {item.dashboard_id &&
+            (item.action === "created" || item.action === "skipped") && (
+              <Link
+                to={`/dashboard/${item.dashboard_id}`}
+              >{t`Open dashboard`}</Link>
+            )}
           {item.card_id &&
             (item.action === "created" || item.action === "skipped") && (
               <Link to={`/question/${item.card_id}`}>{t`Open question`}</Link>
@@ -73,11 +83,13 @@ function ItemList({ items }: { items: AssetTransferItem[] }) {
 export function AssetTransferPage() {
   const cards = useListCardsQuery({ f: "all" });
   const databases = useListDatabasesQuery();
+  const dashboards = useListDashboardsQuery({ f: "all" });
   const [exportAssets, exportState] = useExportAssetsMutation();
   const [previewImport, previewState] = usePreviewAssetImportMutation();
   const [importAssets, importState] = useImportAssetsMutation();
   const [getResult, recoveryState] = useLazyGetAssetImportQuery();
   const [retryEvents, retryEventsState] = useRetryAssetImportEventsMutation();
+  const [dashboardIds, setDashboardIds] = useState<string[]>([]);
   const [cardIds, setCardIds] = useState<string[]>([]);
   const [databaseIds, setDatabaseIds] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -180,15 +192,29 @@ export function AssetTransferPage() {
   return (
     <Stack p="xl" maw={960} gap="lg">
       <Title order={1}>{t`Asset transfer`}</Title>
-      <Text>{t`Move standalone questions and connection templates between instances running the same Metabase version. Existing questions are never overwritten.`}</Text>
-      <Text c="text-secondary">{t`Version 1 supports PostgreSQL, MySQL, ClickHouse, simple SQL and single-table queries, and table, number, line and bar charts. Dashboards, models, joins, saved-question references and field filters are not supported.`}</Text>
-      {!!(error || cards.error || databases.error) && (
+      <Text>{t`Move dashboards, questions and connection templates between instances running the same Metabase version. Existing assets are never overwritten.`}</Text>
+      <Text c="text-secondary">{t`Supports dashboard layouts, tabs, text tiles and filters, with table, number, line and bar charts using simple SQL or single-table queries on PostgreSQL, MySQL and ClickHouse. Models, joins, saved-question references, SQL field filters, actions and custom click behaviors are not supported.`}</Text>
+      {!!(error || cards.error || databases.error || dashboards.error) && (
         <Alert color="error" role="alert">
-          {error ?? getErrorMessage(cards.error ?? databases.error)}
+          {error ??
+            getErrorMessage(cards.error ?? databases.error ?? dashboards.error)}
         </Alert>
       )}
 
       <Title order={2}>{t`Export`}</Title>
+      <MultiSelect
+        label={t`Dashboards`}
+        description={t`Referenced questions and connection templates are included automatically.`}
+        searchable
+        clearable
+        disabled={dashboards.isLoading || !!dashboards.error}
+        value={dashboardIds}
+        onChange={setDashboardIds}
+        data={(dashboards.data ?? []).map((dashboard) => ({
+          value: String(dashboard.id),
+          label: `${dashboard.name} (#${dashboard.id})`,
+        }))}
+      />
       <MultiSelect
         label={t`Questions`}
         searchable
@@ -223,7 +249,9 @@ export function AssetTransferPage() {
       <Button
         loading={exportState.isLoading}
         disabled={
-          (!cardIds.length && !databaseIds.length) || cardIds.length > 100
+          (!cardIds.length && !databaseIds.length && !dashboardIds.length) ||
+          cardIds.length > 100 ||
+          dashboardIds.length > 20
         }
         onClick={async () => {
           setError(undefined);
@@ -231,6 +259,7 @@ export function AssetTransferPage() {
             downloadBundle(
               await exportAssets({
                 card_ids: cardIds.map(Number),
+                dashboard_ids: dashboardIds.map(Number),
                 database_ids: databaseIds.map(Number),
               }).unwrap(),
             );
@@ -254,6 +283,7 @@ export function AssetTransferPage() {
       {bundle && (
         <>
           <Text>{t`${bundle.cards.length} questions in this file`}</Text>
+          <Text>{t`${bundle.dashboards?.length ?? 0} dashboards in this file`}</Text>
           {bundle.databases.map((source) => (
             <Stack key={source.id} gap="xs">
               <Select
@@ -288,8 +318,8 @@ export function AssetTransferPage() {
               >{t`Create a connection from this template`}</Button>
             </Stack>
           ))}
-          <Alert>{t`New connections are saved separately and remain if question import fails. Finish metadata synchronization before preflight. SQL text is preserved; verify that names written in SQL exist in the target database.`}</Alert>
-          {bundle.cards.length > 0 ? (
+          <Alert>{t`New connections are saved separately and remain if asset import fails. Finish metadata synchronization before preflight. SQL text is preserved; verify that names written in SQL exist in the target database.`}</Alert>
+          {bundle.cards.length > 0 || (bundle.dashboards?.length ?? 0) > 0 ? (
             <>
               <Button
                 disabled={busy}
@@ -356,7 +386,7 @@ export function AssetTransferPage() {
         <>
           <Alert color={result.status === "complete" ? "success" : "warning"}>
             {result.status === "complete"
-              ? t`Definitions imported. Open the questions to verify their results.`
+              ? t`Definitions imported. Open the dashboards and questions to verify their results.`
               : t`Definitions are committed, but creation events are pending. Retry event delivery to finish without creating duplicates.`}
           </Alert>
           {result.status === "events_pending" && (

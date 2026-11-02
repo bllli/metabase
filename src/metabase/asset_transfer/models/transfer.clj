@@ -12,3 +12,6 @@
 
 (t2/deftransforms :model/AssetTransferImport
   {:result mi/transform-json})
+
+(methodical/defmethod t2/table-name :model/AssetTransferDashboardBinding [_] :asset_transfer_dashboard_binding)
+(derive :model/AssetTransferDashboardBinding :metabase/model)

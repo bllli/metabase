@@ -35,3 +35,18 @@
 
 (defn lock-import! "Serialize event delivery and retries for one request." [request-id]
   (t2/select-one :model/AssetTransferImport :request_id request-id {:for :update}))
+
+(defn dashboard "Read a dashboard including runtime flags for eligibility checks." [id]
+  (t2/select-one :model/Dashboard :id id))
+(defn dashboard-tabs "Read tabs in stable presentation order." [id]
+  (t2/select :model/DashboardTab :dashboard_id id {:order-by [[:position :asc] [:id :asc]]}))
+(defn dashcards "Read the complete dashboard layout including series." [id]
+  (t2/hydrate (t2/select :model/DashboardCard :dashboard_id id {:order-by [[:id :asc]]}) :series))
+(defn dashboard-binding "Look up a dashboard within a destination collection." [source-id collection-id]
+  (t2/select-one :model/AssetTransferDashboardBinding :source_entity_id source-id :collection_id collection-id))
+(defn insert-dashboard-binding! "Persist the dashboard mapping inside its import transaction." [row]
+  (t2/insert! :model/AssetTransferDashboardBinding row))
+(defn insert-dashboard! "Insert a validated dashboard; caller defers events until commit." [row]
+  (t2/insert-returning-instance! :model/Dashboard row))
+(defn insert-tab! "Create a validated tab and return its new ID." [row]
+  (t2/insert-returning-pk! :model/DashboardTab row))

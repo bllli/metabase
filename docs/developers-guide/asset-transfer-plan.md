@@ -152,3 +152,32 @@ bun run type-check-pure
 提交前运行模块配置生成器，移除未被其他模块使用的模型导出声明。REST 模块按仓库要求注册为 `asset-transfer.rest` 子模块，使用 `asset-transfer-rest` namespace，命名空间前缀预算相应增加一项。迁移 v1 协议仍明确采用 legacy MBQL，生产代码保留一处转换例外并为该符号增加一项 lint 配额；测试中不需要的忽略声明已删除。
 
 镜像构建保留 Maven/Git 依赖缓存，并为 Bun、uv 和 Alpine 包增加 BuildKit 持久缓存；Bun/uv 按构建架构、Alpine 按目标架构隔离。源码变化导致安装层重跑时仍可复用已下载的依赖，缓存挂载不会进入最终镜像。首次构建或清理 builder 缓存后仍需下载；后续使用同一个 builder 才能复用本地缓存，包索引检查及新版本依赖仍可能联网。
+
+## Dashboard 扩展（V2，2026-11-02）
+
+本节扩展前文的 V1 范围。管理页现在可以选择 Dashboard，自动去重收集其主图表、附加 series 和连接模板；仍可以额外选择独立 Question。包含 Dashboard 时导出 V2，纯 Question/连接模板仍导出 V1；导入同时接受两种格式，同一 Metabase 版本的限制保留。
+
+支持名称、说明、宽度、自动应用筛选器、标签页顺序、网格位置和尺寸、文字/标题卡片、普通 Dashboard 筛选器及其物理字段或 SQL 标量变量映射。Dashboard 内部 Question 保留归属，多个 Dashboard 共享的独立 Question 只创建一次。表、数字、折线、柱状图及查询范围仍受 V1 白名单约束。
+
+不包含权限、公开分享、嵌入设置、订阅、缓存策略、Action、链接/iframe/Visualizer 卡片、自定义点击行为、以 Question 提供筛选值的配置，以及 SQL field filter、模型、Join、引用其他 Question 的查询。遇到不支持的组件、筛选配置或查询会报错，不会静默删除组件。Markdown 中的 URL 与 SQL 文本保持原样，不解析或迁移其中的链接。连接凭据和业务查询结果始终不随文件导出。
+
+### 模块及协议
+
+- `asset_transfer/dashboard.clj`：Dashboard 定义读取、白名单验证、布局/筛选器精确引用改写、冲突规划和创建。图表引用使用源 entity ID；tab ID 只在单个 Dashboard 内解释，创建时替换成目标 ID。
+- `asset_transfer/core.clj`：导出依赖收集，预检查覆盖 Question 和 Dashboard；事务中依次创建 Dashboard、Question、标签页和布局，最后写映射与事件日志。创建事件统一在提交后发布，可补发。
+- `asset_transfer/db.clj`、`models/transfer.clj`、`20261102_asset_transfer_dashboards.yaml`：新增 Dashboard 映射表，按源 Dashboard entity ID + 目标 Collection 唯一定位。源定义/其使用的数据库绑定或目标布局变化即冲突，不覆盖目标编辑。多数据源 Dashboard 不强行绑定单个数据库。
+- REST `POST /api/asset-transfer/export` 增加可选 `dashboard_ids`；V2 bundle 增加 `dashboards`，内部图表增加 `dashboard_entity_id`。预检查/执行结果增加 `model` 和 `dashboard_id`，原接口路径不变。
+- 管理页增加 Dashboard 多选、文件中的 Dashboard 数量、Dashboard 打开链接；只有 Dashboard 而无 Question 的文件也能选择 Collection 并导入。文件上限仍为 10 MiB，单批最多 20 个 Dashboard、100 个去重后的 Question，每个 Dashboard 最多 100 个标签页、200 个 tile。
+
+### 验证
+
+- H2 后端集成、HTTP、迁移创建/唯一约束/回滚重建及模块检查：52 个测试、8701 项断言通过。
+- 普通权限、无 citext 的 PostgreSQL App DB：新增迁移及 6 个 Dashboard 测试、42 项断言通过。
+- 功能前端：13 个测试通过，完整前端构建通过。全量 TypeScript 检查仍只有前文记录的两个既有 kbar 回调签名错误。
+- 测试覆盖内部图表归属、布局与标签页、文字、筛选器字段改写、SQL 标量参数、跨数据库 series、共享图表去重、空 Dashboard、重复导入、变更冲突、事务回滚、事件补发，以及 V1 回归。
+
+- 浏览器：在两个独立本地实例完成选择 Dashboard、下载、上传、绑定连接与 Collection、预检查、执行及打开 Dashboard。Revenue/Notes 两个标签页与文字保留；筛选字段从 77 映射到 80，选择 Books 后图表显示 200；再次预检查 Question 和 Dashboard 均为 Skip。
+- clj-kondo（变更模块和测试）0 errors、0 warnings；前端 oxlint、迁移 lint、依赖/忽略预算检查与 `git diff --check` 通过。clj-kondo 仍输出仓库已有 inline-config 解析提示，不属于本次文件的 lint finding。
+- 本地截图、V2 文件及验证记录保存在 Git 忽略目录 `local/dashboard-transfer/`。浏览器样例为 `http://127.0.0.1:3041/dashboard/2`。尚未验证 MySQL App DB 和真实 MySQL/ClickHouse 数据源。
+
+本次修改尚未提交、构建镜像或更新线上实例。

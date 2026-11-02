@@ -24,7 +24,8 @@
   [pred code path message]
   (when-not pred (fail! code path message)))
 
-(defn- closed!
+(defn closed!
+  "Reject unknown definition keys before persisting or resolving references."
   [value allowed path]
   (check! (map? value) "INVALID_FORMAT" path "Expected an object.")
   (check! (every? allowed (keys value)) "UNSUPPORTED_OPTION" path "This object contains unsupported options."))
@@ -240,7 +241,7 @@
 (defn card
   "Validate a portable card and rewrite its references."
   [value database-map table-map field-map]
-  (closed! value (conj card-keys :entity_id) [:card])
+  (closed! value (conj card-keys :entity_id :dashboard_entity_id) [:card])
   (check! (and (string? (:entity_id value)) (re-matches #"[A-Za-z0-9_-]{21}" (:entity_id value)) (short-string? (:name value))
                (or (nil? (:description value)) (string? (:description value)))
                (displays (:display value))) "UNSUPPORTED_CARD" [:card] "Invalid identity, name, or unsupported display type.")
@@ -264,13 +265,17 @@
   [bundle version]
   (check! (<= (alength (.getBytes (json/encode bundle) StandardCharsets/UTF_8)) max-bytes)
           "FILE_TOO_LARGE" [] "Bundle exceeds 10 MiB.")
-  (closed! bundle #{:format :format_version :producer :databases :tables :fields :cards} [])
-  (check! (and (= "metabase-asset-transfer" (:format bundle)) (= 1 (:format_version bundle))
-               (= {:metabase_version version :transfer_version 1} (:producer bundle)))
+  (closed! bundle #{:format :format_version :producer :databases :tables :fields :cards :dashboards} [])
+  (check! (and (= "metabase-asset-transfer" (:format bundle)) (contains? #{1 2} (:format_version bundle))
+               (= {:metabase_version version :transfer_version (:format_version bundle)} (:producer bundle)))
           "VERSION_MISMATCH" [:producer] "Export and import must use the same Metabase and transfer version.")
-  (doseq [k [:databases :tables :fields :cards]]
+  (check! (if (= 1 (:format_version bundle))
+            (and (not (contains? bundle :dashboards)) (not-any? :dashboard_entity_id (:cards bundle)))
+            (and (vector? (:dashboards bundle)) (<= (count (:dashboards bundle)) 20)))
+          "INVALID_FORMAT" [:dashboards] "V2 supports at most 20 dashboards; V1 cannot contain dashboards.")
+  (doseq [k (cond-> [:databases :tables :fields :cards] (= 2 (:format_version bundle)) (conj :dashboards))]
     (check! (vector? (k bundle)) "INVALID_FORMAT" [k] "Expected an array.")
-    (let [ids (map (if (= k :cards) :entity_id :id) (k bundle))]
+    (let [ids (map (if (contains? #{:cards :dashboards} k) :entity_id :id) (k bundle))]
       (check! (= (count ids) (count (distinct ids))) "DUPLICATE_REFERENCE" [k] "Duplicate object reference.")))
   (check! (<= (count (:cards bundle)) max-cards) "TOO_MANY_CARDS" [:cards] "At most 100 cards can be imported.")
   (check! (<= (count (:databases bundle)) 100) "INVALID_FORMAT" [:databases] "Too many databases.")

@@ -7,11 +7,12 @@ export type TransferDatabase = {
 
 export type AssetTransferBundle = {
   format: "metabase-asset-transfer";
-  format_version: 1;
-  producer: { metabase_version: string; transfer_version: 1 };
+  format_version: 1 | 2;
+  producer: { metabase_version: string; transfer_version: 1 | 2 };
   databases: TransferDatabase[];
   tables: Record<string, unknown>[];
   fields: Record<string, unknown>[];
+  dashboards?: { entity_id: string; name: string; [key: string]: unknown }[];
   cards: { entity_id: string; name: string; [key: string]: unknown }[];
 };
 
@@ -33,6 +34,8 @@ export type AssetTransferItem = {
   name: string;
   action: "create" | "skip" | "conflict" | "created" | "skipped";
   card_id?: number;
+  dashboard_id?: number;
+  model?: "card" | "dashboard";
   error?: AssetTransferError;
   event_delivered?: boolean;
 };

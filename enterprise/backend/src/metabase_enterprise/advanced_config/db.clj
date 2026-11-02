@@ -6,6 +6,7 @@
    [metabase.app-db.core :as mdb]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.users.schema :as users.schema]
+   [metabase.util :as u]
    [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms]
    [metabase.warehouses.schema :as warehouses.schema]
@@ -44,13 +45,13 @@
 (mu/defn user-by-email
   "The User with `email`, or nil."
   [email :- :string]
-  (t2/select-one :model/User :email email))
+  (t2/select-one :model/User :%lower.email (u/lower-case-en email)))
 
 (mu/defn user-columns-by-email
   "The `columns` of the User with `email`, or nil."
   [columns :- [:sequential :keyword]
    email :- :string]
-  (t2/select-one (into [:model/User] columns) :email email))
+  (t2/select-one (into [:model/User] columns) :%lower.email (u/lower-case-en email)))
 
 (mu/defn insert-user!
   "Insert `user` and return the new instance."

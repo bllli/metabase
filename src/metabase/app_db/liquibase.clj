@@ -8,6 +8,7 @@
    [metabase.app-db.db :as app-db.db]
    [metabase.app-db.liquibase.h2 :as liquibase.h2]
    [metabase.app-db.liquibase.mysql :as liquibase.mysql]
+   [metabase.app-db.liquibase.postgres :as liquibase.postgres]
    [metabase.app-db.liquibase.versions :as versions]
    [metabase.classloader.core :as classloader]
    [metabase.config.core :as config]
@@ -43,8 +44,9 @@
   ;; load our custom migrations
   metabase.app-db.custom-migrations/keep-me)
 
-;; register our custom MySQL SQL generators
+;; Register application-database SQL generators.
 (liquibase.mysql/register-mysql-generators!)
+(liquibase.postgres/register-postgres-generators!)
 
 ;; Liquibase uses java.util.logging (JUL) for logging, so we need to install the JUL -> Log4j2 bridge which replaces the
 ;; default JUL handler with one that "writes" log messages to Log4j2. (Not sure this is the best place in the world to

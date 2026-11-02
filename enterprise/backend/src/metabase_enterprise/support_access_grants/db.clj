@@ -7,6 +7,7 @@
    [metabase.auth-identity.schema :as auth-identity.schema]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.users.schema :as users.schema]
+   [metabase.util :as u]
    [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms]
    [toucan2.core :as t2]))
@@ -83,12 +84,12 @@
 (mu/defn user-by-email
   "The User with `email`, or nil."
   [email :- :string]
-  (t2/select-one :model/User :email email))
+  (t2/select-one :model/User :%lower.email (u/lower-case-en email)))
 
 (mu/defn user-superuser-flag-by-email
   "The `:id` and `:is_superuser` of the User with `email`, or nil."
   [email :- :string]
-  (t2/select-one [:model/User :id :is_superuser] :email email))
+  (t2/select-one [:model/User :id :is_superuser] :%lower.email (u/lower-case-en email)))
 
 (mu/defn user-names-and-emails
   "A map of User ID to first name and email for `user-ids`."

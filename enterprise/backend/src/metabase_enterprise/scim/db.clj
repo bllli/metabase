@@ -48,7 +48,7 @@
 (mu/defn scim-user-by-email
   "The SCIM columns of the User with `email`, or nil."
   [email :- :string]
-  (t2/select-one user-columns :email (u/lower-case-en email)))
+  (t2/select-one user-columns :%lower.email (u/lower-case-en email)))
 
 (mu/defn scim-users
   "The SCIM columns of the personal Users, narrowed to the optional `email` (case-insensitive), paged by `limit`

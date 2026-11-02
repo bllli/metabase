@@ -7,6 +7,7 @@
    [metabase.models.db :as models.db]
    [metabase.models.serialization.path :as serdes.path]
    [metabase.models.serialization.resolve :as resolve]
+   [metabase.util :as u]
    [metabase.util.log :as log]
    [toucan2.core :as t2])
   (:import (clojure.lang ExceptionInfo)))
@@ -78,7 +79,9 @@
 (defn import-fk-keyed
   "Given a portable identifying field value, return the numeric :id."
   [portable model field]
-  (models.db/pk-by-field model field portable))
+  (if (and (= "User" (name model)) (= :email field))
+    (models.db/pk-by-field model :%lower.email (u/lower-case-en portable))
+    (models.db/pk-by-field model field portable)))
 
 (defn import-user
   "Import a user by email, creating if needed. Returns PK."

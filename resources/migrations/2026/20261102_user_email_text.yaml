@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: emtxtq7k
+      author: codex
+      dbms: postgresql
+      comment: Store user emails without citext and preserve case-insensitive uniqueness
+      changes:
+        - customChange:
+            class: metabase.app_db.custom_migrations.UserEmailWithoutCitext

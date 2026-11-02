@@ -6,6 +6,19 @@
    [metabase.test :as mt]
    [toucan2.core :as t2]))
 
+(deftest import-user-email-case-insensitive-test
+  (mt/with-temp [:model/User {id :id} {:email "legacy@example.com"}]
+    ;; Old databases and direct SQL imports can contain emails not normalized by the User model.
+    (t2/update! :core_user id {:email "Legacy@Example.com"})
+    (is (= id (serdes/*import-user* "LEGACY@EXAMPLE.COM")))
+    (is (= id (serdes/*import-user* "legacy@example.com")))))
+
+(deftest user-email-normalization-test
+  (mt/with-temp [:model/User {id :id} {:email "New.User@Example.com"}]
+    (is (= "new.user@example.com" (t2/select-one-fn :email :core_user :id id)))
+    (t2/update! :model/User id {:email "Updated.User@Example.com"})
+    (is (= "updated.user@example.com" (t2/select-one-fn :email :core_user :id id)))))
+
 (deftest import-table-fk-existing-test
   (testing "returns the existing table id when found"
     (mt/with-temp [:model/Database {db-id :id}    {:name "test-db"}

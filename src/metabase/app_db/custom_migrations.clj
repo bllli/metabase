@@ -23,6 +23,7 @@
    [clojurewerkz.quartzite.triggers :as triggers]
    [medley.core :as m]
    [metabase.app-db.connection :as mdb.connection]
+   [metabase.app-db.custom-migrations.email-text :as email-text]
    [metabase.app-db.custom-migrations.llm-providers :as llm-providers]
    [metabase.app-db.custom-migrations.metrics-v2 :as metrics-v2]
    [metabase.app-db.custom-migrations.pulse-to-notification :as pulse-to-notification]
@@ -2356,3 +2357,8 @@
                       (t2/exists? :collection :location [:like (str location "%")]))
           (t2/query {:delete-from :permissions :where [:= :collection_id resource_collection_id]})
           (t2/query {:delete-from :collection :where [:= :id resource_collection_id]}))))))
+
+(define-reversible-migration UserEmailWithoutCitext
+  (email-text/migrate-email-to-text!)
+  (throw (ex-info "UserEmailWithoutCitext cannot be rolled back automatically; restore the pre-upgrade database backup."
+                  {})))

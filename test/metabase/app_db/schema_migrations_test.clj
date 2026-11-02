@@ -4200,3 +4200,28 @@
         (is (= own (t2/select-one-fn :resource_collection_id :data_app :id other-app)))
         (testing "a second app on a collection is refused"
           (is (thrown? Exception (app! "third" shared))))))))
+
+(deftest asset-transfer-tables-test
+  (impl/test-migrations ["atimp26a" "atbindu26"] [migrate!]
+    (migrate!)
+    (let [request {:request_id "test-import-request" :request_hash (apply str (repeat 64 "a"))
+                   :user_id 1 :status "complete" :result "{\"items\":[]}"}
+          binding {:source_entity_id "SourceQuestion0000001" :collection_id 1 :database_id 1 :card_id 1
+                   :source_hash (apply str (repeat 64 "b")) :target_hash (apply str (repeat 64 "c"))}]
+      (t2/insert! :asset_transfer_import request)
+      (t2/insert! :asset_transfer_binding binding)
+      (is (some? (t2/select-one-fn :created_at :asset_transfer_import)))
+      (is (thrown? Exception (t2/insert! :asset_transfer_import request)))
+      (is (thrown? Exception (t2/insert! :asset_transfer_binding binding)))
+      (testing "source NanoIDs remain case-sensitive, including on MySQL"
+        (t2/insert! :asset_transfer_binding (assoc binding :source_entity_id "sourceQuestion0000001"))
+        (is (= 2 (t2/count :asset_transfer_binding))))
+      (testing "all four changesets roll back and can be applied again"
+        (t2/with-connection [conn]
+          (liquibase/with-liquibase [liquibase conn]
+            (.rollback liquibase (int 4) "")))
+        (is (thrown? Exception (t2/count :asset_transfer_import)))
+        (is (thrown? Exception (t2/count :asset_transfer_binding)))
+        (migrate!)
+        (is (zero? (t2/count :asset_transfer_import)))
+        (is (zero? (t2/count :asset_transfer_binding)))))))

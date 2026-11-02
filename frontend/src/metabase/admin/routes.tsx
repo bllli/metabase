@@ -48,6 +48,11 @@ const databaseList = () =>
     /* webpackChunkName: "admin" */ "metabase/admin/databases/containers/DatabaseListApp"
   ).then(({ DatabaseListApp }) => ({ Component: DatabaseListApp }));
 
+const assetTransfer = () =>
+  import(
+    /* webpackChunkName: "admin" */ "metabase/admin/asset-transfer/AssetTransferPage"
+  ).then(({ AssetTransferPage }) => ({ Component: AssetTransferPage }));
+
 const databasePage = () =>
   import(
     /* webpackChunkName: "admin" */ "metabase/admin/databases/containers/DatabasePage"
@@ -172,6 +177,9 @@ export const getRoutes = (
     <Route path="/admin" element={<CanAccessSettings />}>
       <Route lazy={adminApp}>
         <Route index element={<RedirectToAllowedSettings />} />
+        <Route element={<IsAdmin />}>
+          <Route path="asset-transfer" lazy={assetTransfer} />
+        </Route>
         <Route
           path="databases"
           element={createElement(createAdminRouteGuard("databases"))}

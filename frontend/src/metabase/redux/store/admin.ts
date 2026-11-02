@@ -12,6 +12,7 @@ export type AdminPathKey =
   | "metabot"
   | "people"
   | "databases"
+  | "asset-transfer"
   | "permissions"
   | "audit"
   | "help"

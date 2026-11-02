@@ -15,6 +15,7 @@
    [metabase.api.routes.common :as routes.common :refer [+static-apikey]]
    [metabase.api.util]
    [metabase.api.util.handlers :as handlers]
+   [metabase.asset-transfer-rest.api]
    [metabase.bookmarks.api]
    [metabase.bug-reporting.api]
    [metabase.cache.api]
@@ -89,6 +90,7 @@
          metabase.analytics.api.proxy/keep-me
          metabase.api-keys.api/keep-me
          metabase.api.util/keep-me
+         metabase.asset-transfer-rest.api/keep-me
          metabase.bookmarks.api/keep-me
          metabase.bug-reporting.api/keep-me
          metabase.cache.api/keep-me
@@ -196,6 +198,7 @@
    "/analytics"            (+auth 'metabase.analytics.api)
    "/analytics-proxy"      (+public-exceptions 'metabase.analytics.api.proxy)
    "/api-key"              (+auth 'metabase.api-keys.api)
+   "/asset-transfer"       (+auth 'metabase.asset-transfer-rest.api)
    "/automagic-dashboards" (+auth metabase.xrays.api/automagic-dashboards-routes)
    "/bookmark"             (+auth 'metabase.bookmarks.api)
    "/bug-reporting"        (+auth 'metabase.bug-reporting.api)

@@ -1,0 +1,143 @@
+databaseChangeLog:
+  - changeSet:
+      id: atimp26a
+      author: codex
+      comment: Record OSS asset transfer results without credentials or query text
+      changes:
+        - createTable:
+            tableName: asset_transfer_import
+            remarks: Idempotent import results and pending creation events
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                    primaryKeyName: pk_asset_transfer_import
+              - column:
+                  name: request_id
+                  type: varchar(64)
+                  remarks: Client generated retry key
+                  constraints:
+                    nullable: false
+              - column:
+                  name: request_hash
+                  type: varchar(64)
+                  remarks: SHA256 of input excluding the retry key and preview hash
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: int
+                  remarks: Administrator who executed the import; retained if user is removed
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: varchar(32)
+                  remarks: events_pending or complete
+                  constraints:
+                    nullable: false
+              - column:
+                  name: result
+                  type: ${text.type}
+                  remarks: JSON results containing target IDs and event delivery state, never connection details
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: ${timestamp_type}
+                  defaultValueComputed: current_timestamp
+                  remarks: Commit time of the import
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: asset_transfer_import
+
+  - changeSet:
+      id: atbind26a
+      author: codex
+      comment: Track source question mappings without changing Card entity identities
+      changes:
+        - createTable:
+            tableName: asset_transfer_binding
+            remarks: Source identities scoped to a target collection and database; retained on target deletion for conflict detection
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                    primaryKeyName: pk_asset_transfer_binding
+              - column:
+                  name: source_entity_id
+                  type: ${entity_id.type}
+                  remarks: Source question entity ID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: collection_id
+                  type: int
+                  remarks: Target collection ID; no cascading deletion
+                  constraints:
+                    nullable: false
+              - column:
+                  name: database_id
+                  type: int
+                  remarks: Target database ID; no cascading deletion
+                  constraints:
+                    nullable: false
+              - column:
+                  name: card_id
+                  type: int
+                  remarks: Imported question ID; retained to detect deletion
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_hash
+                  type: varchar(64)
+                  remarks: SHA256 of the portable source definition
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_hash
+                  type: varchar(64)
+                  remarks: SHA256 of the managed target definition immediately after creation
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: asset_transfer_binding
+
+  - changeSet:
+      id: atimpu26
+      author: codex
+      comment: Prevent duplicate asset_transfer_import records
+      changes:
+        - addUniqueConstraint:
+            tableName: asset_transfer_import
+            columnNames: request_id
+            constraintName: uq_asset_transfer_request
+      rollback:
+        - dropUniqueConstraint:
+            tableName: asset_transfer_import
+            constraintName: uq_asset_transfer_request
+
+  - changeSet:
+      id: atbindu26
+      author: codex
+      comment: Prevent duplicate asset_transfer_binding records
+      changes:
+        - addUniqueConstraint:
+            tableName: asset_transfer_binding
+            columnNames: source_entity_id, collection_id, database_id
+            constraintName: uq_asset_transfer_binding
+      rollback:
+        - dropUniqueConstraint:
+            tableName: asset_transfer_binding
+            constraintName: uq_asset_transfer_binding

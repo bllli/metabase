@@ -1312,10 +1312,13 @@
   Dispatches the `:card-create` event unless `delay-event?` is true. Useful for when many cards are created in a
   transaction and work in the `:card-create` event cannot proceed because the cards would not be visible outside of
   the transaction yet. If you pass true here it is important to call the event after the cards are successfully
-  created."
+  created. The internal `:skip-query-metadata?` option saves definitions without fetching query result metadata."
   ([card creator] (create-card! card creator false))
   ([card creator delay-event?] (create-card! card creator delay-event? true))
-  ([{:keys [result_metadata parameters parameter_mappings type] :as input-card-data} creator delay-event? autoplace-dashboard-questions?]
+  ([input-card-data creator delay-event? autoplace-dashboard-questions?]
+   (create-card! input-card-data creator delay-event? autoplace-dashboard-questions? {}))
+  ([{:keys [result_metadata parameters parameter_mappings type] :as input-card-data} creator delay-event? autoplace-dashboard-questions?
+    {:keys [skip-query-metadata?]}]
    ;; you can't specify the dashboard_tab_id and not a dashboard_id
    (api/check-400 (not (and (:dashboard_tab_id input-card-data)
                             (not (:dashboard_id input-card-data)))))
@@ -1338,16 +1341,21 @@
                                                 ;; Strict so a malformed query throws here instead of being silently
                                                 ;; coerced to `{}`. See #74615.
                                                 (m/update-existing :dataset_query #(lib-be/normalize-query nil % {:strict? true})))
-         {:keys [metadata metadata-future]} (card.metadata/maybe-async-result-metadata
-                                             {:query     (:dataset_query card-data)
-                                              :metadata  result_metadata
-                                              :entity-id (:entity_id card-data)
-                                              :model?    (model? card-data)})
+         ;; Asset transfer writes definitions in a batch transaction. Starting a warehouse query/future here
+         ;; would escape rollback and execute SQL from the imported file before the user opens the question.
+         {:keys [metadata metadata-future]} (when-not skip-query-metadata?
+                                              (card.metadata/maybe-async-result-metadata
+                                               {:query     (:dataset_query card-data)
+                                                :metadata  result_metadata
+                                                :entity-id (:entity_id card-data)
+                                                :model?    (model? card-data)}))
          card                               (t2/with-transaction [_conn]
                                               ;; Adding a new card at `collection_position` could cause other cards in
                                               ;; this collection to change position, check that and fix it if needed
                                               (api/maybe-reconcile-collection-position! position-info)
                                               (u/prog1 (queries.db/insert-card! (cond-> card-data
+                                                                                  skip-query-metadata?
+                                                                                  (assoc :result_metadata nil)
                                                                                   metadata
                                                                                   (assoc :result_metadata metadata)))
                                                 (when (collections/remote-synced-collection? (:collection_id <>))

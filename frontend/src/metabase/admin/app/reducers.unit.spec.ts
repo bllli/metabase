@@ -22,6 +22,7 @@ describe("getAdminPaths", () => {
       "permissions",
       "performance",
       "help",
+      "asset-transfer",
     ]);
   });
 });

@@ -380,6 +380,18 @@
    :uses #{lib.schema settings util}
    :model-imports #{:model/Dashboard}}
 
+  asset-transfer
+  {:team "Querying Platform"
+   :api #{metabase.asset-transfer.core}
+   :uses #{api events lib lib.be models queries util util.config warehouse-schema-overlay}
+   :model-imports #{:model/Card :model/Collection :model/Database :model/Field :model/Table}}
+
+  asset-transfer.rest
+  {:team "Querying Platform"
+   :ns-prefix "metabase.asset-transfer-rest"
+   :api #{metabase.asset-transfer-rest.api}
+   :uses #{api asset-transfer util}}
+
   audit-app
   {:team "UX West"
    :module-exports #{audit-app.view-log}

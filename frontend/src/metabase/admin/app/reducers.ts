@@ -49,6 +49,11 @@ export const getAdminPaths: () => AdminPath[] = () => {
       path: "/admin/help",
       key: "help",
     },
+    {
+      getName: () => t`Asset transfer`,
+      path: "/admin/asset-transfer",
+      key: "asset-transfer",
+    },
   ];
 
   return items;

@@ -18,6 +18,7 @@ test_resources/*
 node_modules
 **/node_modules
 **metabase.jar
+local
 
 *.db
 

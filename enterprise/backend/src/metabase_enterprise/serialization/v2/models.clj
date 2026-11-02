@@ -80,6 +80,8 @@
    "ApiKey"
    "ApiKeyUsageLog"
    "ApplicationPermissionsRevision"
+   "AssetTransferBinding"
+   "AssetTransferImport"
    "AuditLog"
    "AuthIdentity"
    "BookmarkOrdering"

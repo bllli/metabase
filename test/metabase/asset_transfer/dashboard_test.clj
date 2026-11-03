@@ -1,7 +1,8 @@
 (ns metabase.asset-transfer.dashboard-test
   (:require
    [clojure.test :refer :all]
-   [metabase.asset-transfer.core :as transfer]
+   [metabase.asset-transfer.transfer :as transfer]
+   [metabase.asset-transfer.yaml :as yaml]
    [metabase.events.core :as events]
    [metabase.queries.models.card.metadata :as card.metadata]
    [metabase.test :as mt]
@@ -32,7 +33,7 @@
                                                :visualization_settings {:virtual_card {:display "text" :name nil :archived false :visualization_settings {}}
                                                                         :text "Sales report"}}]
       (mt/with-model-cleanup [:model/Dashboard :model/Card :model/AssetTransferImport
-                              :model/AssetTransferBinding :model/AssetTransferDashboardBinding]
+                              :model/AssetTransferBinding :model/AssetTransferDashboardBinding :model/AssetResourceBinding]
         (mt/with-test-user :crowberto
           (let [bundle (transfer/export-bundle {:dashboard_ids [(:id dashboard)] :card_ids [] :database_ids []})
                 request {:bundle bundle :database_bindings {(keyword (str (:id source))) (:id target)}
@@ -43,7 +44,7 @@
 (deftest dashboard-roundtrip-test
   (with-dashboard-transfer!
     (fn [request source-dashboard source-card target-field]
-      (is (= 2 (get-in request [:bundle :format_version])))
+      (is (vector? (get-in request [:bundle :dashboards])))
       (is (= [(:entity_id source-card)] (mapv :entity_id (get-in request [:bundle :cards]))))
       (is (true? (:can_import (transfer/preview request))))
       (with-redefs [events/publish-event! (fn [& _])
@@ -98,12 +99,16 @@
 (deftest dashboard-http-and-event-retry-test
   (with-dashboard-transfer!
     (fn [request source-dashboard _ _]
-      (let [bundle (mt/user-http-request :crowberto :post 200 "asset-transfer/export"
-                                         {:dashboard_ids [(:id source-dashboard)]})
-            request (assoc request :bundle bundle)
+      (let [exported (mt/user-http-request :crowberto :post 200 "asset-transfer/export"
+                                           {:dashboard_ids [(:id source-dashboard)]})
+            doc (yaml/parse (:yaml exported))
+            request {:yaml (:yaml exported) :request_id (:request_id request)
+                     :target_collection_id (:target_collection_id request)
+                     :database_bindings {(keyword (get-in doc [:spec :databases 0 :key]))
+                                         (first (vals (:database_bindings request)))}}
             preview (mt/user-http-request :crowberto :post 200 "asset-transfer/import/preview" (dissoc request :request_id :plan_hash))
             request (assoc request :plan_hash (:plan_hash preview))]
-        (is (true? (:can_import preview)))
+        (is (true? (:can_import preview)) (pr-str preview))
         (with-redefs [events/publish-event! (fn [& _] (throw (ex-info "Unavailable" {})))]
           (let [result (mt/user-http-request :crowberto :post 200 "asset-transfer/import" request)]
             (is (= "events_pending" (:status result)))
@@ -139,7 +144,7 @@
                           (assoc-in [:database_bindings (keyword (str (:id other-source)))] (:id other-target)))
               preview (transfer/preview request)
               request (assoc request :plan_hash (:plan_hash preview))]
-          (is (true? (:can_import preview)))
+          (is (true? (:can_import preview)) (pr-str preview))
           (with-redefs [events/publish-event! (fn [& _])]
             (let [result (transfer/import-bundle! request)
                   native-id (:card_id (first (filter #(= (:entity_id native) (:source_entity_id %)) (:items result))))
@@ -161,6 +166,6 @@
         (let [request {:bundle (transfer/export-bundle {:dashboard_ids [(:id source)] :card_ids [] :database_ids []})
                        :database_bindings {} :target_collection_id (:id collection) :request_id (str (random-uuid))}
               preview (transfer/preview request)]
-          (is (true? (:can_import preview)))
+          (is (true? (:can_import preview)) (pr-str preview))
           (with-redefs [events/publish-event! (fn [& _])]
             (is (= "created" (-> (transfer/import-bundle! (assoc request :plan_hash (:plan_hash preview))) :items first :action)))))))))

@@ -20,6 +20,11 @@
             (reset! calls 0)
             (events/publish-event! :event/database-create {:object db :user-id (mt/user->id :crowberto)})
             (is (= 1 @calls)))
+          (testing "provisioning owns metadata sync while audit delivery still succeeds"
+            (reset! calls 0)
+            (events/publish-event! :event/database-create
+                                   {:object db :user-id (mt/user->id :crowberto) :skip-auto-sync? true})
+            (is (zero? @calls)))
           (testing "with disable-auto-sync=true: no sync entry point is invoked"
             (reset! calls 0)
             (mt/with-temporary-setting-values [disable-auto-sync true]

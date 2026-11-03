@@ -1,5 +1,6 @@
 (ns metabase.warehouses.core
   (:require
+   [metabase.warehouses.create]
    [metabase.warehouses.provider-detection]
    [metabase.warehouses.settings]
    [metabase.warehouses.util]
@@ -10,6 +11,7 @@
          metabase.warehouses.util/keep-me)
 
 (p/import-vars
+ [metabase.warehouses.create create-database!]
  [metabase.warehouses.provider-detection
   detect-provider-from-database]
  [metabase.warehouses.settings

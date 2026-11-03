@@ -7,6 +7,7 @@
    [metabase.analytics.core :as analytics.core]
    [metabase.api-routes.core :as api-routes]
    [metabase.app-db.core :as mdb]
+   [metabase.asset-transfer.core :as asset-transfer]
    [metabase.classloader.core :as classloader]
    [metabase.cloud-migration.core :as cloud-migration]
    [metabase.config.core :as config]
@@ -249,6 +250,7 @@
   (database/check-health!)
   (startup/run-startup-logic!)
   (setting/log-deprecated-env-var-usage!)
+  (asset-transfer/initialize!)
   (init-status/set-progress! 0.95)
   (task/start-scheduler!)
   (queue/start-listeners!)

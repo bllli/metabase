@@ -1,25 +1,31 @@
 export type TransferDatabase = {
-  id: number;
+  key: string;
   name: string;
   engine: "postgres" | "mysql" | "clickhouse";
-  details: Record<string, string | number | boolean>;
+  details: Record<
+    string,
+    string | number | boolean | { valueFrom: { env?: string; file?: string } }
+  >;
 };
 
 export type AssetTransferBundle = {
-  format: "metabase-asset-transfer";
-  format_version: 1 | 2;
-  producer: { metabase_version: string; transfer_version: 1 | 2 };
-  databases: TransferDatabase[];
-  tables: Record<string, unknown>[];
-  fields: Record<string, unknown>[];
-  dashboards?: { entity_id: string; name: string; [key: string]: unknown }[];
-  cards: { entity_id: string; name: string; [key: string]: unknown }[];
+  apiVersion: "silinex.metabase/v1";
+  kind: "AssetSet";
+  metadata: { key: string };
+  spec: {
+    databases: TransferDatabase[];
+    collections: { key: string; name: string }[];
+    tables: Record<string, unknown>[];
+    fields: Record<string, unknown>[];
+    questions: { key: string; name: string; [key: string]: unknown }[];
+    dashboards: { key: string; name: string; [key: string]: unknown }[];
+  };
 };
 
 export type AssetTransferRequest = {
-  bundle: AssetTransferBundle;
-  database_bindings: Record<string, number>;
-  target_collection_id: number;
+  yaml: string;
+  database_bindings?: Record<string, number>;
+  target_collection_id?: number;
 };
 
 export type AssetTransferError = {
@@ -32,16 +38,18 @@ export type AssetTransferError = {
 export type AssetTransferItem = {
   source_entity_id: string;
   name: string;
-  action: "create" | "skip" | "conflict" | "created" | "skipped";
+  action: "create" | "bind" | "skip" | "conflict" | "created" | "skipped";
   card_id?: number;
   dashboard_id?: number;
-  model?: "card" | "dashboard";
+  model?: "card" | "dashboard" | "database" | "collection";
+  target_id?: number;
   error?: AssetTransferError;
   event_delivered?: boolean;
 };
 
 export type AssetTransferPlan = {
   can_import: boolean;
+  requires_sync?: boolean;
   plan_hash?: string;
   items: AssetTransferItem[];
   errors?: AssetTransferError[];

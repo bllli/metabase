@@ -209,7 +209,8 @@
    [:previous-object {:optional true} [:fn #(t2/instance-of? :model/Database %)]]
    [:details {:optional true} :map]
    [:user-id pos-int?]
-   [:details-changed? {:optional true} [:maybe :boolean]]])
+   [:details-changed? {:optional true} [:maybe :boolean]]
+   [:skip-auto-sync? {:optional true} :boolean]])
 
 (mr/def :event/database-create ::database)
 (mr/def :event/database-update ::database)

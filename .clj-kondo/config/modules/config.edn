@@ -384,15 +384,21 @@
   {:team "Querying Platform"
    :api #{metabase.asset-transfer.core}
    :uses #{api
+           app-db
+           collections
            dashboards
            events
            lib
            lib.be
            models
            queries
+           request
+           sync
+           system
            util
            util.config
-           warehouse-schema-overlay}
+           warehouse-schema-overlay
+           warehouses}
    :model-imports #{:model/Card
                     :model/Collection
                     :model/Dashboard
@@ -400,7 +406,8 @@
                     :model/DashboardTab
                     :model/Database
                     :model/Field
-                    :model/Table}}
+                    :model/Table
+                    :model/User}}
 
   asset-transfer.rest
   {:team "Querying Platform"

@@ -9,6 +9,7 @@ import {
 import {
   useExportAssetsMutation,
   useImportAssetsMutation,
+  useInspectAssetFileMutation,
   useLazyGetAssetImportQuery,
   usePreviewAssetImportMutation,
   useRetryAssetImportEventsMutation,
@@ -23,7 +24,6 @@ import {
   Divider,
   FileInput,
   Group,
-  Modal,
   MultiSelect,
   Select,
   Stack,
@@ -36,21 +36,19 @@ import type {
   AssetTransferPlan,
   AssetTransferResult,
   ExecuteAssetTransferRequest,
-  TransferDatabase,
 } from "metabase-types/api/asset-transfer";
-
-import { DatabaseEditConnectionForm } from "../databases/components/DatabaseEditConnectionForm";
 
 import {
   LAST_IMPORT_KEY,
   MAX_BUNDLE_BYTES,
+  checkFileSize,
   downloadBundle,
-  parseBundle,
 } from "./utils";
 
 function ItemList({ items }: { items: AssetTransferItem[] }) {
   const labels = {
     create: t`Create`,
+    bind: t`Bind`,
     skip: t`Skip`,
     conflict: t`Conflict`,
     created: t`Created`,
@@ -84,6 +82,8 @@ export function AssetTransferPage() {
   const cards = useListCardsQuery({ f: "all" });
   const databases = useListDatabasesQuery();
   const dashboards = useListDashboardsQuery({ f: "all" });
+  const [inspectFile, inspectState] = useInspectAssetFileMutation();
+  const [yaml, setYaml] = useState("");
   const [exportAssets, exportState] = useExportAssetsMutation();
   const [previewImport, previewState] = usePreviewAssetImportMutation();
   const [importAssets, importState] = useImportAssetsMutation();
@@ -97,7 +97,6 @@ export function AssetTransferPage() {
   const [bindings, setBindings] = useState<Record<string, number>>({});
   const [collection, setCollection] = useState<{ id: number; name: string }>();
   const [pickingCollection, setPickingCollection] = useState(false);
-  const [newDatabase, setNewDatabase] = useState<TransferDatabase>();
   const [plan, setPlan] = useState<AssetTransferPlan>();
   const [attempt, setAttempt] = useState<ExecuteAssetTransferRequest>();
   const [result, setResult] = useState<AssetTransferResult>();
@@ -107,6 +106,7 @@ export function AssetTransferPage() {
   );
   const revision = useRef(0);
   const busy =
+    inspectState.isLoading ||
     previewState.isLoading ||
     importState.isLoading ||
     recoveryState.isFetching ||
@@ -125,6 +125,8 @@ export function AssetTransferPage() {
     const generation = revision.current;
     setFile(next);
     setBundle(undefined);
+    setYaml("");
+    setCollection(undefined);
     setBindings({});
     if (!next) {
       return;
@@ -133,9 +135,11 @@ export function AssetTransferPage() {
       if (next.size > MAX_BUNDLE_BYTES) {
         throw new Error(t`The file exceeds 10 MiB.`);
       }
-      const value = parseBundle(await next.text());
+      const text = checkFileSize(await next.text());
+      const value = await inspectFile({ yaml: text }).unwrap();
       if (revision.current === generation) {
         setBundle(value);
+        setYaml(text);
       }
     } catch (e) {
       if (revision.current === generation) {
@@ -145,7 +149,7 @@ export function AssetTransferPage() {
   };
 
   const runPreview = async () => {
-    if (!bundle || !collection) {
+    if (!bundle) {
       return;
     }
     setError(undefined);
@@ -155,9 +159,9 @@ export function AssetTransferPage() {
     const generation = revision.current;
     try {
       const next = await previewImport({
-        bundle,
+        yaml,
         database_bindings: bindings,
-        target_collection_id: collection.id,
+        ...(collection ? { target_collection_id: collection.id } : {}),
       }).unwrap();
       if (generation === revision.current) {
         setPlan(next);
@@ -168,13 +172,13 @@ export function AssetTransferPage() {
   };
 
   const execute = async () => {
-    if (!bundle || !collection || !plan?.can_import || !plan.plan_hash) {
+    if (!bundle || !plan?.can_import || !plan.plan_hash) {
       return;
     }
     const request = attempt ?? {
-      bundle,
+      yaml,
       database_bindings: bindings,
-      target_collection_id: collection.id,
+      ...(collection ? { target_collection_id: collection.id } : {}),
       plan_hash: plan.plan_hash,
       request_id: crypto.randomUUID(),
     };
@@ -192,7 +196,7 @@ export function AssetTransferPage() {
   return (
     <Stack p="xl" maw={960} gap="lg">
       <Title order={1}>{t`Asset transfer`}</Title>
-      <Text>{t`Move dashboards, questions and connection templates between instances running the same Metabase version. Existing assets are never overwritten.`}</Text>
+      <Text>{t`Export, import or initialize data sources, collections, questions and dashboards using the same YAML file. Existing assets are never overwritten.`}</Text>
       <Text c="text-secondary">{t`Supports dashboard layouts, tabs, text tiles and filters, with table, number, line and bar charts using simple SQL or single-table queries on PostgreSQL, MySQL and ClickHouse. Models, joins, saved-question references, SQL field filters, actions and custom click behaviors are not supported.`}</Text>
       {!!(error || cards.error || databases.error || dashboards.error) && (
         <Alert color="error" role="alert">
@@ -274,7 +278,7 @@ export function AssetTransferPage() {
       <FileInput
         label={t`Transfer file`}
         fileInputProps={{ "aria-label": t`Upload transfer file` }}
-        accept="application/json,.json"
+        accept="application/yaml,text/yaml,.yaml,.yml"
         clearable
         value={file}
         onChange={readFile}
@@ -282,16 +286,18 @@ export function AssetTransferPage() {
       />
       {bundle && (
         <>
-          <Text>{t`${bundle.cards.length} questions in this file`}</Text>
-          <Text>{t`${bundle.dashboards?.length ?? 0} dashboards in this file`}</Text>
-          {bundle.databases.map((source) => (
-            <Stack key={source.id} gap="xs">
+          <Text>{t`${bundle.spec.questions.length} questions in this file`}</Text>
+          <Text>{t`${bundle.spec.dashboards.length} dashboards in this file`}</Text>
+          {bundle.spec.databases.map((source) => (
+            <Stack key={source.key} gap="xs">
               <Select
                 label={t`Target connection for ${source.name}`}
                 searchable
                 clearable
                 disabled={busy}
-                value={bindings[source.id] ? String(bindings[source.id]) : null}
+                value={
+                  bindings[source.key] ? String(bindings[source.key]) : null
+                }
                 data={(databases.data?.data ?? [])
                   .filter((db) => db.engine === source.engine && !db.is_stub)
                   .map((db) => ({
@@ -303,43 +309,40 @@ export function AssetTransferPage() {
                   setBindings((previous) => {
                     const next = { ...previous };
                     if (value) {
-                      next[source.id] = Number(value);
+                      next[source.key] = Number(value);
                     } else {
-                      delete next[source.id];
+                      delete next[source.key];
                     }
                     return next;
                   });
                 }}
               />
+            </Stack>
+          ))}
+          <Alert>{t`Leave a connection unbound to create it from YAML using server-side secret references. New connections and collections remain if a later step fails. SQL text is preserved.`}</Alert>
+          <Text>{t`Destination: ${collection?.name ?? bundle.spec.collections[0]?.name ?? ""}`}</Text>
+          <Group>
+            <Button disabled={busy} onClick={() => setPickingCollection(true)}>
+              {t`Bind an existing collection`}
+            </Button>
+            {collection && (
               <Button
                 variant="subtle"
                 disabled={busy}
-                onClick={() => setNewDatabase(source)}
-              >{t`Create a connection from this template`}</Button>
-            </Stack>
-          ))}
-          <Alert>{t`New connections are saved separately and remain if asset import fails. Finish metadata synchronization before preflight. SQL text is preserved; verify that names written in SQL exist in the target database.`}</Alert>
-          {bundle.cards.length > 0 || (bundle.dashboards?.length ?? 0) > 0 ? (
-            <>
-              <Button
-                disabled={busy}
-                onClick={() => setPickingCollection(true)}
-              >
-                {collection?.name ?? t`Choose destination collection`}
-              </Button>
-              <Button
-                disabled={
-                  busy ||
-                  !collection ||
-                  bundle.databases.some((db) => !bindings[db.id])
-                }
-                loading={previewState.isLoading}
-                onClick={runPreview}
-              >{t`Run preflight`}</Button>
-            </>
-          ) : (
-            <Text>{t`This file contains connection templates only. Create or bind the connections above; no question import is needed.`}</Text>
-          )}
+                onClick={() => {
+                  invalidate();
+                  setCollection(undefined);
+                }}
+              >{t`Use collection from YAML`}</Button>
+            )}
+          </Group>
+          <Button
+            disabled={busy}
+            loading={previewState.isLoading}
+            onClick={runPreview}
+          >
+            {t`Run preflight`}
+          </Button>
         </>
       )}
       {plan && (
@@ -350,6 +353,9 @@ export function AssetTransferPage() {
               {item.path && <Text size="sm">{item.path.join(" / ")}</Text>}
             </Alert>
           ))}
+          {plan.requires_sync && (
+            <Alert>{t`Import will create or bind resources and synchronize metadata before validating question and dashboard references. Resource creation is retained if later validation fails.`}</Alert>
+          )}
           <ItemList items={plan.items} />
           <Button
             disabled={!plan.can_import || busy || result?.status === "complete"}
@@ -422,36 +428,6 @@ export function AssetTransferPage() {
           }}
         />
       )}
-      <Modal
-        opened={!!newDatabase}
-        onClose={() => setNewDatabase(undefined)}
-        title={t`Create target connection`}
-        size="xl"
-      >
-        {newDatabase && (
-          <DatabaseEditConnectionForm
-            key={newDatabase.id}
-            database={{
-              name: newDatabase.name,
-              engine: newDatabase.engine,
-              details: newDatabase.details,
-            }}
-            isAttachedDWH={false}
-            config={{ engine: { fieldState: "disabled" } }}
-            formLocation="admin"
-            onCancel={() => setNewDatabase(undefined)}
-            onSubmitted={({ id }) => {
-              invalidate();
-              setBindings((previous) => ({
-                ...previous,
-                [newDatabase.id]: id,
-              }));
-              setNewDatabase(undefined);
-              databases.refetch();
-            }}
-          />
-        )}
-      </Modal>
     </Stack>
   );
 }

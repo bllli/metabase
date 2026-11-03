@@ -80,6 +80,7 @@
    "ApiKey"
    "ApiKeyUsageLog"
    "ApplicationPermissionsRevision"
+   "AssetResourceBinding"
    "AssetTransferBinding"
    "AssetTransferDashboardBinding"
    "AssetTransferImport"

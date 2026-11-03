@@ -175,3 +175,8 @@
   "The Database id of the Table with `table-id`, or nil."
   [table-id :- ::lib.schema.id/table]
   (t2/select-one-fn :db_id :model/Table, :id table-id {:from [(warehouse-schema-overlay/table-query {:user-settings? false})]}))
+
+(defn insert-database!
+  "Insert a validated database definition, applying the Database model hooks."
+  [row]
+  (t2/insert-returning-instance! :model/Database row))

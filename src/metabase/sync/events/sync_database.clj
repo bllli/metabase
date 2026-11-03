@@ -16,10 +16,11 @@
 (methodical/defmethod events/publish-event! ::event
   "When a new Database is created or a stub Database gets connected, kick off a sync process for it in a different
   thread."
-  [topic {database :object previous-database :previous-object :as _event}]
+  [topic {database :object previous-database :previous-object skip-auto-sync? :skip-auto-sync? :as _event}]
   ;; try/catch here to prevent individual topic processing exceptions from bubbling up.  better to handle them here.
   (try
     (when (and database
+               (not skip-auto-sync?)
                (not (:is_stub database))
                (or (= topic :event/database-create)
                    (:is_stub previous-database))

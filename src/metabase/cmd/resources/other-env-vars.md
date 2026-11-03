@@ -548,3 +548,24 @@ Type: string<br>
 Default: `null`
 
 Base-64 encoded public key for this sites SSL certificate. Specify this to enable HTTP Public Key Pinning. Using HPKP is no longer recommended. See https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Certificate_Transparency for more information.
+
+### `MB_PROVISIONING_FILE`
+
+Type: string<br>
+Default: `null`
+
+Private OSS build: path to a `silinex.metabase/v1` YAML AssetSet applied before startup completes. Uses the same format and importer as Admin → Asset transfer. Disabled when unset.
+
+### `MB_PROVISIONING_OWNER_EMAIL`
+
+Type: string<br>
+Default: `null`
+
+Existing active administrator responsible for startup asset creation. Required when `MB_PROVISIONING_FILE` is configured; does not create the first administrator.
+
+### `MB_PROVISIONING_TIMEOUT_SECONDS`
+
+Type: integer<br>
+Default: `300`
+
+Maximum startup provisioning duration, from 1 to 3600 seconds. Failure or timeout aborts initialization before readiness. Match the deployment's startup probe budget to the configured timeout.

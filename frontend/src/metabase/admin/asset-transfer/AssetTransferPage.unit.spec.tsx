@@ -1,5 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
+import { dump } from "js-yaml";
 
 import {
   setupCardsEndpoints,
@@ -39,13 +40,19 @@ jest.mock("metabase/common/components/Pickers/CollectionPicker", () => ({
 }));
 
 const bundle: AssetTransferBundle = {
-  format: "metabase-asset-transfer",
-  format_version: 1,
-  producer: { metabase_version: "test", transfer_version: 1 },
-  databases: [{ id: 1, name: "Source", engine: "postgres", details: {} }],
-  tables: [],
-  fields: [],
-  cards: [{ entity_id: "source-card", name: "Revenue" }],
+  apiVersion: "silinex.metabase/v1",
+  kind: "AssetSet",
+  metadata: { key: "business" },
+  spec: {
+    databases: [
+      { key: "source", name: "Source", engine: "postgres", details: {} },
+    ],
+    collections: [{ key: "reports", name: "Reports" }],
+    tables: [],
+    fields: [],
+    questions: [{ key: "source-card", name: "Revenue" }],
+    dashboards: [],
+  },
 };
 
 interface SetupOpts {
@@ -73,12 +80,15 @@ function setup({ lastRequest }: SetupOpts = {}) {
   });
 }
 
-async function configureImport(importBundle: AssetTransferBundle = bundle) {
-  const file = new File([JSON.stringify(importBundle)], "assets.json", {
-    type: "application/json",
+async function configureImport({
+  importBundle = bundle,
+}: { importBundle?: AssetTransferBundle } = {}) {
+  fetchMock.post("path:/api/asset-transfer/inspect", importBundle);
+  const file = new File([dump(importBundle)], "assets.yaml", {
+    type: "application/yaml",
   });
   Object.defineProperty(file, "text", {
-    value: async () => JSON.stringify(importBundle),
+    value: async () => dump(importBundle),
   });
   await userEvent.upload(screen.getByLabelText("Upload transfer file"), file);
   await userEvent.click(
@@ -88,7 +98,7 @@ async function configureImport(importBundle: AssetTransferBundle = bundle) {
     await screen.findByRole("option", { name: "Target (#10)" }),
   );
   await userEvent.click(
-    screen.getByRole("button", { name: "Choose destination collection" }),
+    screen.getByRole("button", { name: "Bind an existing collection" }),
   );
   await userEvent.click(
     screen.getByRole("button", { name: "Choose Analytics" }),
@@ -120,10 +130,11 @@ describe("AssetTransferPage", () => {
   it("imports an empty dashboard and links to the imported dashboard", async () => {
     const dashboardBundle: AssetTransferBundle = {
       ...bundle,
-      format_version: 2,
-      producer: { metabase_version: "test", transfer_version: 2 },
-      cards: [],
-      dashboards: [{ entity_id: "source-dashboard", name: "Sales" }],
+      spec: {
+        ...bundle.spec,
+        questions: [],
+        dashboards: [{ key: "source-dashboard", name: "Sales" }],
+      },
     };
     const requests: unknown[] = [];
     fetchMock.post("path:/api/asset-transfer/import/preview", {
@@ -156,7 +167,7 @@ describe("AssetTransferPage", () => {
       };
     });
     setup();
-    await configureImport(dashboardBundle);
+    await configureImport({ importBundle: dashboardBundle });
     await userEvent.click(
       screen.getByRole("button", { name: "Run preflight" }),
     );
@@ -168,7 +179,7 @@ describe("AssetTransferPage", () => {
     ).toHaveAttribute("href", "/dashboard/55");
     expect(requests).toEqual([
       expect.objectContaining({
-        bundle: dashboardBundle,
+        yaml: dump(dashboardBundle),
       } satisfies Partial<ExecuteAssetTransferRequest>),
     ]);
   });

@@ -65,15 +65,12 @@
   (is (not= (s/digest [1 2]) (s/digest [2 1]))))
 
 (deftest bundle-boundary-test
-  (let [bundle {:format "metabase-asset-transfer" :format_version 1
-                :producer {:metabase_version "test" :transfer_version 1}
-                :cards [basic-card] :databases [{:id 1 :name "db" :engine "postgres" :details {}}]
+  (let [bundle {:cards [basic-card] :dashboards [] :databases [{:id 1 :name "db" :engine "postgres" :details {}}]
                 :tables [] :fields []}]
-    (is (= bundle (s/bundle! bundle "test")))
+    (is (= bundle (s/bundle! bundle)))
     (doseq [bad [(assoc bundle :format_version 2)
                  (assoc-in bundle [:databases 0 :details :password] "secret")
                  (assoc bundle :cards [basic-card basic-card])
                  (assoc bundle :cards (vec (repeat 101 basic-card)))
                  (assoc bundle :unexpected true)]]
-      (is (thrown? clojure.lang.ExceptionInfo (s/bundle! bad "test"))))
-    (is (thrown? clojure.lang.ExceptionInfo (s/bundle! bundle "other")))))
+      (is (thrown? clojure.lang.ExceptionInfo (s/bundle! bad))))))

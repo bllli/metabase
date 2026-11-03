@@ -4241,3 +4241,21 @@
       (is (thrown? Exception (t2/count :asset_transfer_dashboard_binding)))
       (migrate!)
       (is (zero? (t2/count :asset_transfer_dashboard_binding))))))
+
+(deftest yaml-resource-bindings-test
+  (impl/test-migrations ["asresq7k" "asresu7k"] [migrate!]
+    (migrate!)
+    (let [row {:namespace "business" :resource_type "database" :resource_key "Warehouse" :target_id 1
+               :identity_hash (apply str (repeat 64 "a"))
+               :source_hash (apply str (repeat 64 "b")) :target_hash (apply str (repeat 64 "c"))}]
+      (t2/insert! :asset_resource_binding row)
+      (is (thrown? Exception (t2/insert! :asset_resource_binding row)))
+      (t2/insert! :asset_resource_binding (assoc row :resource_key "warehouse" :identity_hash (apply str (repeat 64 "d"))))
+      (is (= 2 (t2/count :asset_resource_binding)))
+      (is (false? (t2/select-one-fn :events_pending :asset_resource_binding :identity_hash (:identity_hash row))))
+      (t2/with-connection [conn]
+        (liquibase/with-liquibase [liquibase conn]
+          (.rollback liquibase (int 2) "")))
+      (is (thrown? Exception (t2/count :asset_resource_binding)))
+      (migrate!)
+      (is (zero? (t2/count :asset_resource_binding))))))

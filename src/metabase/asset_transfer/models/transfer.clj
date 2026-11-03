@@ -15,3 +15,9 @@
 
 (methodical/defmethod t2/table-name :model/AssetTransferDashboardBinding [_] :asset_transfer_dashboard_binding)
 (derive :model/AssetTransferDashboardBinding :metabase/model)
+
+(methodical/defmethod t2/table-name :model/AssetResourceBinding [_] :asset_resource_binding)
+(derive :model/AssetResourceBinding :metabase/model)
+
+(t2/deftransforms :model/AssetResourceBinding
+  {:secret_reference mi/transform-json})

@@ -11,8 +11,15 @@ import { listTag } from "./tags";
 
 export const assetTransferApi = Api.injectEndpoints({
   endpoints: (builder) => ({
+    inspectAssetFile: builder.mutation<AssetTransferBundle, { yaml: string }>({
+      query: (body) => ({
+        method: "POST",
+        url: "/api/asset-transfer/inspect",
+        body,
+      }),
+    }),
     exportAssets: builder.mutation<
-      AssetTransferBundle,
+      { yaml: string },
       { card_ids: number[]; database_ids: number[]; dashboard_ids?: number[] }
     >({
       query: (body) => ({
@@ -41,6 +48,7 @@ export const assetTransferApi = Api.injectEndpoints({
         body,
       }),
       invalidatesTags: () => [
+        listTag("database"),
         listTag("card"),
         listTag("dashboard"),
         listTag("collection"),
@@ -61,6 +69,7 @@ export const assetTransferApi = Api.injectEndpoints({
 
 export const {
   useExportAssetsMutation,
+  useInspectAssetFileMutation,
   usePreviewAssetImportMutation,
   useImportAssetsMutation,
   useLazyGetAssetImportQuery,

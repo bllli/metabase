@@ -793,7 +793,7 @@
     (if valid?
       ;; no error, proceed with creation. If record is inserted successfully, publish a `:database-create` event.
       ;; Throw a 500 if nothing is inserted
-      (u/prog1 (api/check-500 (warehouses-rest.db/insert-database!
+      (u/prog1 (api/check-500 (warehouses/create-database!
                                (merge
                                 {:name         name
                                  :engine       engine

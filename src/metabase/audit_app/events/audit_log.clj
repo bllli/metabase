@@ -236,7 +236,7 @@
 
 (methodical/defmethod events/publish-event! ::database-event
   [topic event]
-  (audit-log/record-event! topic event))
+  (audit-log/record-event! topic (dissoc event :skip-auto-sync?)))
 
 (events/derive! ::database-update-event ::event)
 (events/derive! :event/database-update ::database-update-event)

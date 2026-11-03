@@ -1,7 +1,7 @@
 (ns metabase.asset-transfer.core-test
   (:require
    [clojure.test :refer :all]
-   [metabase.asset-transfer.core :as transfer]
+   [metabase.asset-transfer.transfer :as transfer]
    [metabase.events.core :as events]
    [metabase.lib.core :as lib]
    [metabase.queries.core :as queries]

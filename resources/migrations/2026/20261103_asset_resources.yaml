@@ -1,0 +1,89 @@
+databaseChangeLog:
+  - changeSet:
+      id: asresq7k
+      author: codex
+      comment: Track YAML asset resource identities and drift
+      changes:
+        - createTable:
+            tableName: asset_resource_binding
+            remarks: Durable YAML resource bindings without secrets
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  remarks: Resource binding identifier
+                  autoIncrement: true
+                  constraints:
+                    nullable: false
+                    primaryKey: true
+                    primaryKeyName: pk_asset_resource_binding
+              - column:
+                  name: identity_hash
+                  type: varchar(64)
+                  remarks: Case-sensitive SHA256 of namespace resource type and key
+                  constraints:
+                    nullable: false
+              - column:
+                  name: namespace
+                  type: varchar(100)
+                  remarks: AssetSet namespace
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resource_type
+                  type: varchar(20)
+                  remarks: database collection card or dashboard
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resource_key
+                  type: varchar(100)
+                  remarks: Stable resource key within namespace
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_id
+                  type: int
+                  remarks: Target object ID retained after deletion
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_hash
+                  type: varchar(64)
+                  remarks: Digest of source definition without resolved credentials
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_hash
+                  type: varchar(64)
+                  remarks: Digest of managed target properties without credentials
+                  constraints:
+                    nullable: false
+              - column:
+                  name: secret_reference
+                  type: ${text.type}
+                  remarks: Original credential reference only never the resolved value
+              - column:
+                  name: events_pending
+                  type: ${boolean.type}
+                  defaultValueBoolean: false
+                  remarks: Database creation event delivery remains pending
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: asset_resource_binding
+
+  - changeSet:
+      id: asresu7k
+      author: codex
+      comment: Prevent duplicate YAML resource identities
+      changes:
+        - addUniqueConstraint:
+            tableName: asset_resource_binding
+            columnNames: identity_hash
+            constraintName: uq_asset_resource_identity
+      rollback:
+        - dropUniqueConstraint:
+            tableName: asset_resource_binding
+            constraintName: uq_asset_resource_identity

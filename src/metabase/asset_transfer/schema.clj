@@ -262,18 +262,13 @@
 
 (defn bundle!
   "Validate structural integrity before resolving any references or touching a target database."
-  [bundle version]
+  [bundle]
   (check! (<= (alength (.getBytes (json/encode bundle) StandardCharsets/UTF_8)) max-bytes)
           "FILE_TOO_LARGE" [] "Bundle exceeds 10 MiB.")
-  (closed! bundle #{:format :format_version :producer :databases :tables :fields :cards :dashboards} [])
-  (check! (and (= "metabase-asset-transfer" (:format bundle)) (contains? #{1 2} (:format_version bundle))
-               (= {:metabase_version version :transfer_version (:format_version bundle)} (:producer bundle)))
-          "VERSION_MISMATCH" [:producer] "Export and import must use the same Metabase and transfer version.")
-  (check! (if (= 1 (:format_version bundle))
-            (and (not (contains? bundle :dashboards)) (not-any? :dashboard_entity_id (:cards bundle)))
-            (and (vector? (:dashboards bundle)) (<= (count (:dashboards bundle)) 20)))
-          "INVALID_FORMAT" [:dashboards] "V2 supports at most 20 dashboards; V1 cannot contain dashboards.")
-  (doseq [k (cond-> [:databases :tables :fields :cards] (= 2 (:format_version bundle)) (conj :dashboards))]
+  (closed! bundle #{:databases :tables :fields :cards :dashboards} [])
+  (check! (and (vector? (:dashboards bundle)) (<= (count (:dashboards bundle)) 20))
+          "INVALID_FORMAT" [:dashboards] "At most 20 dashboards are supported.")
+  (doseq [k [:databases :tables :fields :cards :dashboards]]
     (check! (vector? (k bundle)) "INVALID_FORMAT" [k] "Expected an array.")
     (let [ids (map (if (contains? #{:cards :dashboards} k) :entity_id :id) (k bundle))]
       (check! (= (count ids) (count (distinct ids))) "DUPLICATE_REFERENCE" [k] "Duplicate object reference.")))
